@@ -1,0 +1,17 @@
+{
+  "name": "family-tree-manager",
+  "version": "1.0.0",
+  "description": "家族树管理工具 - 记录和管理家族关系",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.10.3",
+    "express": "^4.21.2",
+    "cors": "^2.8.5"
+  },
+  "author": "",
+  "license": "MIT"
+}
