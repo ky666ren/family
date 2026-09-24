@@ -137,20 +137,34 @@ function renderChapterList(chapters, activeId) {
 
   container.innerHTML = chapters.map(chapter => {
     const isActive = chapter.id === activeId;
+    const safeName = escapeHtml(chapter.name);
     return `
       <div class="chapter-card ${isActive ? 'active' : ''}">
-        <div class="chapter-icon">卷</div>
-        <div class="chapter-info">
-          <div class="chapter-name">${chapter.name}</div>
-          <div class="chapter-date">${formatChapterDate(chapter.updated_at)}</div>
-        </div>
-        <div class="chapter-actions">
-          <button class="btn btn-sm ${isActive ? 'btn-secondary' : 'btn-primary'}" onclick="activateChapter('${chapter.id}')">${isActive ? '当前篇章' : '继续'}</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteChapter('${chapter.id}')">删除</button>
+        <div class="chapter-scroll-body">
+          <div class="chapter-icon">卷</div>
+          <div class="chapter-info">
+            <div class="chapter-name">${safeName}</div>
+            <div class="chapter-date">${formatChapterDate(chapter.updated_at)}</div>
+          </div>
+          <div class="chapter-actions">
+            <button class="btn btn-sm ${isActive ? 'btn-secondary' : 'btn-primary'}" onclick="activateChapter('${chapter.id}')">${isActive ? '当前篇章' : '继续'}</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteChapter('${chapter.id}')">删除</button>
+          </div>
         </div>
       </div>
     `;
   }).join('');
+}
+
+// 简单的 HTML 转义，避免用户输入的 < > & 破坏结构
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function formatChapterDate(isoDate) {
@@ -216,41 +230,58 @@ async function loadFamilies() {
 }
 
 function renderFamilies() {
-  const tbody = document.getElementById('families-list');
-  tbody.innerHTML = families.map(family => {
-    const memberCount = characters.filter(c => c.family_id === family.id).length;
-    return `
-      <tr>
-        <td>${family.name}</td>
-        <td>${memberCount}</td>
-        <td>${family.notes || '-'}</td>
-        <td class="actions">
-          <button class="btn btn-sm btn-secondary" onclick="editFamily('${family.id}')">编辑</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteFamily('${family.id}')">删除</button>
-        </td>
-      </tr>
+  const shelf = document.getElementById('families-list');
+  if (!families.length) {
+    shelf.innerHTML = `
+      <div class="family-book-empty">
+        <p>书阁尚空，新建一个家族立册吧。</p>
+        <button class="btn btn-primary" onclick="openFamilyModal()">新建家族</button>
+      </div>
     `;
-  }).join('');
+    return;
+  }
+  shelf.innerHTML = families.map((family, idx) => buildFamilyBookHtml(family, idx)).join('');
 }
 
 function filterFamilies() {
   const query = document.getElementById('family-search').value.toLowerCase();
   const filtered = families.filter(f => f.name.toLowerCase().includes(query));
-  const tbody = document.getElementById('families-list');
-  tbody.innerHTML = filtered.map(family => {
-    const memberCount = characters.filter(c => c.family_id === family.id).length;
-    return `
-      <tr>
-        <td>${family.name}</td>
-        <td>${memberCount}</td>
-        <td>${family.notes || '-'}</td>
-        <td class="actions">
-          <button class="btn btn-sm btn-secondary" onclick="editFamily('${family.id}')">编辑</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteFamily('${family.id}')">删除</button>
-        </td>
-      </tr>
+  const shelf = document.getElementById('families-list');
+  if (!filtered.length) {
+    shelf.innerHTML = `
+      <div class="family-book-empty">
+        <p>未找到匹配的家族。</p>
+      </div>
     `;
-  }).join('');
+    return;
+  }
+  shelf.innerHTML = filtered.map((family, idx) => buildFamilyBookHtml(family, idx)).join('');
+}
+
+// 书册 HTML：竖排书名 —— 备注
+function buildFamilyBookHtml(family, idx) {
+  const memberCount = characters.filter(c => c.family_id === family.id).length;
+  const safeName = escapeHtml(family.name || '无名');
+  const safeNotes = escapeHtml(family.notes || '');
+  const colorIdx = idx % 5;
+  const notesPart = safeNotes
+    ? `<span class="book-sep">——</span><span class="book-notes">${safeNotes}</span>`
+    : '';
+  return `
+    <div class="family-book color-${colorIdx}" data-id="${family.id}" onclick="editFamily('${family.id}')">
+      <div class="book-spine"></div>
+      <div class="book-ribbon"></div>
+      <div class="book-title">
+        <span>${safeName}</span>
+        ${notesPart}
+      </div>
+      <div class="book-count">族人 ${memberCount} 位</div>
+      <div class="book-actions" onclick="event.stopPropagation()">
+        <button onclick="editFamily('${family.id}')">编辑</button>
+        <button class="book-del" onclick="deleteFamily('${family.id}')">删除</button>
+      </div>
+    </div>
+  `;
 }
 
 let familyModalContext = null;

@@ -57,19 +57,8 @@
         <div class="search-bar">
           <input type="text" id="family-search" placeholder="搜索家族..." oninput="filterFamilies()">
         </div>
-        <div class="data-table-container">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>家族名称</th>
-                <th>成员数量</th>
-                <th>备注</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="families-list">
-            </tbody>
-          </table>
+        <div class="bookshelf" id="families-list">
+          <!-- 书册卡片由 app.js 渲染 -->
         </div>
       </section>
 
