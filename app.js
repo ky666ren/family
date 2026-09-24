@@ -277,6 +277,7 @@ function buildFamilyBookHtml(family, idx) {
       </div>
       <div class="book-count">族人 ${memberCount} 位</div>
       <div class="book-actions" onclick="event.stopPropagation()">
+        <button class="book-overview" onclick="openFamilyOverview('${family.id}')" title="查看家谱总览">总览</button>
         <button onclick="editFamily('${family.id}')">编辑</button>
         <button class="book-del" onclick="deleteFamily('${family.id}')">删除</button>
       </div>
@@ -368,6 +369,230 @@ function viewFamilyTree(familyId) {
   document.getElementById('tree-family-select').value = familyId;
   loadFamilyTree();
 }
+
+// ===== 家族总览 · 家谱树 =====
+// 入口：家族册子卡片上的"总览"按钮 / openFamilyOverview(familyId)
+// 规则：只显示本族（family_id 相同）的血脉人物，不显示妻妾/外族配偶；父母追溯也限于本族。
+// 布局：竖直树，祖先在上，子嗣在下；每个 lineage 一根主干。
+
+let _familyTreeZoom = 1;
+let _familyTreePan = { x: 0, y: 0 };
+
+function buildFamilyLineageTree(members, parentChild) {
+  // 仅保留两端都在家族内的亲子关系
+  const memberIds = new Set(members.map(m => m.id));
+  const insidePC = parentChild.filter(r =>
+    memberIds.has(r.parent_id) && memberIds.has(r.child_id)
+  );
+  // 为每个孩子挑一个"主父"（用于树指针）：biological > 任何第一个；主母不参与树指针（避免双根分叉）
+  // 但为了让祖辈追溯完整，我们记录 male 父为主指针；如果只有 female 母，则用母。
+  const fatherOf = new Map();   // child_id → parent_id (主指针)
+  const motherOf = new Map();
+  const birthStatusOf = new Map();  // child_id → birth_status (嫡/庶/私生)
+  for (const r of insidePC) {
+    const childMeta = members.find(m => m.id === r.child_id);
+    if (!childMeta) continue;
+    // 从所有父母中按性别分桶，取第一个
+    const parentMeta = members.find(m => m.id === r.parent_id);
+    if (!parentMeta) continue;
+    if (parentMeta.gender === 'male' && !fatherOf.has(r.child_id)) {
+      fatherOf.set(r.child_id, r.parent_id);
+      birthStatusOf.set(r.child_id, r.birth_status || 'legitimate');
+    } else if (parentMeta.gender === 'female' && !motherOf.has(r.child_id)) {
+      motherOf.set(r.child_id, r.parent_id);
+      if (!birthStatusOf.has(r.child_id)) {
+        birthStatusOf.set(r.child_id, r.birth_status || 'legitimate');
+      }
+    }
+  }
+  // 主指针规则：优先父；若没有父，则取母
+  const principalParent = new Map();
+  for (const m of members) {
+    if (fatherOf.has(m.id)) principalParent.set(m.id, fatherOf.get(m.id));
+    else if (motherOf.has(m.id)) principalParent.set(m.id, motherOf.get(m.id));
+  }
+  // 构建 children 索引
+  const childrenOf = new Map();
+  for (const m of members) childrenOf.set(m.id, []);
+  for (const [childId, parentId] of principalParent) {
+    if (childrenOf.has(parentId)) childrenOf.get(parentId).push(childId);
+  }
+  // 找出所有根：本族内没有任何父母的人
+  const roots = members.filter(m => !principalParent.has(m.id));
+  // 给每个根构建一个 lineage 树对象
+  function buildNode(personId) {
+    const person = members.find(m => m.id === personId);
+    const childIds = childrenOf.get(personId) || [];
+    // 兄弟排序：先按长子（男在前），其次按出生年/月
+    const sortedChildren = childIds.slice().sort((a, b) => {
+      const pa = members.find(m => m.id === a);
+      const pb = members.find(m => m.id === b);
+      if (!pa || !pb) return 0;
+      // 性别优先：男在前
+      if ((pa.gender === 'male') !== (pb.gender === 'male')) return pa.gender === 'male' ? -1 : 1;
+      const ba = pa.birth_date || '';
+      const bb = pb.birth_date || '';
+      if (ba && bb) return ba.localeCompare(bb);
+      if (ba) return -1;
+      if (bb) return 1;
+      return (pa.name || '').localeCompare(pb.name || '');
+    });
+    return {
+      person,
+      birthStatus: birthStatusOf.get(personId) || null,
+      children: sortedChildren.map(buildNode),
+      hasSpouse: false  // 家族总览：不显示配偶
+    };
+  }
+  // 每个根返回一棵 lineage 树
+  const lineages = roots.map(r => buildNode(r.id));
+  return { lineages, memberCount: members.length };
+}
+
+function renderFamilyTreeNode(node, depth) {
+  const person = node.person;
+  const gender = person.gender;
+  const deceased = person.is_alive === 0;
+  const birthStatus = node.birthStatus;  // 'legitimate' / 'concubine_born' / 'illegitimate' / null
+  const birthTagMap = {
+    legitimate: { cls: 'ft-birth-legitimate', tag: '嫡', tagCls: 'ft-birth-tag-legitimate' },
+    concubine_born: { cls: 'ft-birth-concubine', tag: '庶', tagCls: 'ft-birth-tag-concubine' },
+    illegitimate: { cls: 'ft-birth-illegitimate', tag: '私', tagCls: 'ft-birth-tag-illegitimate' }
+  };
+  const birthInfo = birthStatus ? birthTagMap[birthStatus] : null;
+  const cls = [
+    'ft-node',
+    `ft-gender-${gender || 'unknown'}`,
+    deceased ? 'ft-deceased' : '',
+    birthInfo ? birthInfo.cls : '',
+    'ft-leaf'
+  ].filter(Boolean).join(' ');
+  // 生卒年
+  const dates = (person.birth_date || person.death_date)
+    ? `${person.birth_date || '?'}<br>${person.death_date || (deceased ? '?' : '今')}`
+    : '';
+  // 头像字 = 名字首字
+  const safeName = escapeHtml(person.name || '(无名)');
+  const nameFirst = safeName.length ? safeName[0] : '?';
+  const birthTag = birthInfo ? `<span class="ft-birth-tag ${birthInfo.tagCls}">${birthInfo.tag}</span>` : '';
+  const card = `
+    <div class="${cls}" data-person-id="${escapeHtml(person.id)}">
+      <div class="ft-card" onclick="if(window.openCharacterFromSanzu){window.openCharacterFromSanzu('${escapeHtml(person.id)}')}else{window.viewCharacterDetail('${escapeHtml(person.id)}')}">
+        <div class="ft-card-avatar">${nameFirst}</div>
+        <div class="ft-card-name">${safeName}</div>
+        ${birthTag}
+        ${dates ? `<div class="ft-card-dates">${dates}</div>` : ''}
+      </div>
+    </div>
+  `;
+  if (!node.children || !node.children.length) {
+    return `<div class="ft-branch ft-branch-leaf">${card}</div>`;
+  }
+  const childrenHtml = node.children.map(c => renderFamilyTreeNode(c, depth + 1)).join('');
+  return `
+    <div class="ft-branch">
+      ${card}
+      <div class="ft-children">
+        <div class="ft-children-trunk"></div>
+        <div class="ft-children-list">${childrenHtml}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderFamilyLineageForest(forest) {
+  if (!forest.lineages.length) {
+    return `<div class="family-tree-empty">本族暂无人物。</div>`;
+  }
+  return forest.lineages
+    .map((root, idx) => `<div class="ft-lineage">${renderFamilyTreeNode(root, 0)}</div>`)
+    .join('');
+}
+
+async function openFamilyOverview(familyId) {
+  if (!familyId) return;
+  try {
+    if (!families.length) families = await api.get('/api/families');
+    const family = families.find(f => f.id === familyId);
+    if (!family) return;
+    // 通过 family-tree 接口拿到本族成员 + 同族亲子关系
+    const data = await api.get(`/api/family-tree/${familyId}`);
+    const members = data.members || [];
+    const parentChild = data.parent_child || [];
+    const forest = buildFamilyLineageTree(members, parentChild);
+    // 标题 + 计数
+    const title = document.getElementById('family-tree-title');
+    if (title) title.textContent = `${family.name} 家谱`;
+    const info = document.getElementById('family-tree-info');
+    if (info) {
+      info.textContent = `共 ${members.length} 位族人 · ${forest.lineages.length} 条主干`;
+    }
+    // 画布
+    const canvas = document.getElementById('family-tree-canvas');
+    canvas.innerHTML = renderFamilyLineageForest(forest);
+    // 兄弟连线左右边界
+    requestAnimationFrame(() => measureFamilyTreeLines());
+    // 重置缩放/平移
+    _familyTreeZoom = 1;
+    _familyTreePan = { x: 0, y: 0 };
+    applyFamilyTreeZoom();
+    // 显示 modal
+    document.getElementById('family-tree-overlay').classList.add('active');
+    document.getElementById('family-tree-modal').classList.add('active');
+    document.body.classList.add('family-tree-open');
+  } catch (e) {
+    showToast('加载家谱总览失败: ' + e.message, 'error');
+  }
+}
+
+function measureFamilyTreeLines() {
+  // 给每个 ft-children-list 设置 ft-single 标记，并测量左右边界
+  document.querySelectorAll('#family-tree-canvas .ft-children-list').forEach(list => {
+    const branches = list.querySelectorAll(':scope > .ft-branch');
+    if (branches.length < 2) {
+      list.classList.add('ft-single');
+      list.style.setProperty('--ft-line-left', '0');
+      list.style.setProperty('--ft-line-right', '0');
+      return;
+    }
+    list.classList.remove('ft-single');
+    const listRect = list.getBoundingClientRect();
+    const firstRect = branches[0].getBoundingClientRect();
+    const lastRect = branches[branches.length - 1].getBoundingClientRect();
+    const left = (firstRect.left + firstRect.width / 2) - listRect.left;
+    const right = listRect.right - (lastRect.left + lastRect.width / 2);
+    list.style.setProperty('--ft-line-left', `${left}px`);
+    list.style.setProperty('--ft-line-right', `${right}px`);
+  });
+}
+
+function closeFamilyOverview() {
+  document.getElementById('family-tree-overlay').classList.remove('active');
+  document.getElementById('family-tree-modal').classList.remove('active');
+  document.body.classList.remove('family-tree-open');
+}
+
+function applyFamilyTreeZoom() {
+  const canvas = document.getElementById('family-tree-canvas');
+  if (!canvas) return;
+  canvas.style.transform = `translate(${_familyTreePan.x}px, ${_familyTreePan.y}px) scale(${_familyTreeZoom})`;
+}
+
+function zoomFamilyTree(delta) {
+  _familyTreeZoom = Math.max(0.3, Math.min(2.5, _familyTreeZoom + delta));
+  applyFamilyTreeZoom();
+}
+
+function resetFamilyTreeZoom() {
+  _familyTreeZoom = 1;
+  _familyTreePan = { x: 0, y: 0 };
+  applyFamilyTreeZoom();
+}
+
+window.openFamilyOverview = openFamilyOverview;
+window.closeFamilyOverview = closeFamilyOverview;
+window.zoomFamilyTree = zoomFamilyTree;
+window.resetFamilyTreeZoom = resetFamilyTreeZoom;
 
 // ===== Characters =====
 async function loadCharacters() {
