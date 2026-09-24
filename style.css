@@ -2885,6 +2885,54 @@ textarea#life-event-notes.is-drag-over {
   min-height: 72px;
 }
 
+/* 本人与手足：两栏布局，本人在左（无 ＋），手足在右（有 ＋） */
+.sanzu-row-split-self .sanzu-row-label {
+  align-self: stretch;
+}
+.sanzu-row-cols {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(110px, 0.6fr) 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+.sanzu-row-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed rgba(154, 111, 8, 0.18);
+  background: rgba(253, 246, 227, 0.4);
+  border-radius: 4px;
+  min-height: 72px;
+}
+.sanzu-row-col-self {
+  align-items: center;
+  justify-content: center;
+}
+.sanzu-row-col-siblings {
+  align-items: flex-start;
+  justify-content: flex-start;
+  position: relative;
+}
+.sanzu-row-col-self .sanzu-col-cards,
+.sanzu-row-col-siblings .sanzu-col-cards,
+.sanzu-row-col-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+  align-content: flex-start;
+  flex: 1;
+}
+.sanzu-row-col-siblings .sanzu-row-add {
+  align-self: flex-end;
+  margin-left: auto;
+}
+.sanzu-row-split-self .sanzu-row-label .sanzu-row-add {
+  display: none;
+}
+
 .sanzu-card {
   display: inline-flex;
   flex-direction: column;

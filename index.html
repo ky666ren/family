@@ -655,8 +655,31 @@
               <option value="guoji">过继</option>
             </select>
           </div>
-          <div class="form-group">
-            <label>出身</label>
+          <div class="form-group" id="detail-relation-role-group">
+            <label>称谓（决定在身份关系里的显示名）</label>
+            <select id="detail-relation-role">
+              <!-- 父亲类 -->
+              <option value="father" data-gender="male" data-kind="parent">父亲</option>
+              <option value="birth_father" data-gender="male" data-kind="parent">生父</option>
+              <option value="adoptive_father" data-gender="male" data-kind="parent">养父</option>
+              <option value="sworn_father" data-gender="male" data-kind="parent">义父</option>
+              <!-- 母亲类 -->
+              <option value="mother" data-gender="female" data-kind="parent">母亲</option>
+              <option value="birth_mother" data-gender="female" data-kind="parent">生母</option>
+              <option value="adoptive_mother" data-gender="female" data-kind="parent">养母</option>
+              <option value="sworn_mother" data-gender="female" data-kind="parent">义母</option>
+              <!-- 子女类 -->
+              <option value="son" data-gender="male" data-kind="child">子</option>
+              <option value="birth_son" data-gender="male" data-kind="child">亲子（亲生）</option>
+              <option value="adoptive_son" data-gender="male" data-kind="child">养子</option>
+              <option value="daughter" data-gender="female" data-kind="child">女</option>
+              <option value="birth_daughter" data-gender="female" data-kind="child">亲女（亲生）</option>
+              <option value="adoptive_daughter" data-gender="female" data-kind="child">养女</option>
+            </select>
+            <p class="form-hint" id="detail-relation-role-hint">"父亲"是社会/法律意义上的父亲；"生父"指亲生父亲但未养育（私生/抛弃）；"养父"指明确领养；"义父"指结拜认领。"母亲/生母/养母/义母"同理。</p>
+          </div>
+          <div class="form-group" id="detail-relation-birth-status-group">
+            <label>出身（仅对"子/女"生效）</label>
             <select id="detail-relation-birth-status">
               <option value="legitimate">嫡出</option>
               <option value="concubine_born">庶出</option>

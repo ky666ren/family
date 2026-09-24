@@ -227,6 +227,7 @@
     }
     if (segs[0] === 'api' && segs[1] === 'parent-child' && segs.length === 3) {
       const id = segs[2];
+      if (method === 'PUT') return await db.updateParentChild(id, body);
       if (method === 'DELETE') { await db.deleteParentChild(id); return { success: true }; }
     }
 
@@ -349,8 +350,8 @@
         const allParentChild = [];
         for (const id of allIds) {
           if (!siblingDescendantIds.has(id)) allMarriages.push(...db.getMarriagesByCharacter(id));
-          for (const p of db.getParents(id)) allParentChild.push({ parent_id: p.id, child_id: id, relationship_type: p.relationship_type || 'biological', birth_status: p.birth_status || 'legitimate' });
-          for (const c of db.getChildren(id)) allParentChild.push({ parent_id: id, child_id: c.id, relationship_type: c.relationship_type || 'biological', birth_status: c.birth_status || 'legitimate' });
+          for (const p of db.getParents(id)) allParentChild.push({ parent_id: p.id, child_id: id, relationship_type: p.relationship_type || 'biological', birth_status: p.birth_status || 'legitimate', role_label: p.role_label || null });
+          for (const c of db.getChildren(id)) allParentChild.push({ parent_id: id, child_id: c.id, relationship_type: c.relationship_type || 'biological', birth_status: c.birth_status || 'legitimate', role_label: c.role_label || null });
         }
         const uniqueMarriages = [...new Map(allMarriages.map(m => [m.id, m])).values()];
         const uniquePC = [...new Map(allParentChild.map(p => [`${p.parent_id}->${p.child_id}`, p])).values()];

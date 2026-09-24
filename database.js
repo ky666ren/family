@@ -235,6 +235,7 @@
         parent_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
         child_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
         relationship_type TEXT DEFAULT 'biological', birth_status TEXT DEFAULT 'legitimate',
+        role_label TEXT,
         notes TEXT,
         created_at TEXT DEFAULT (datetime('now'))
       )`);
@@ -265,6 +266,9 @@
         }
         if (!this._columnExists('parent_child', 'birth_status')) {
           this.db.run("ALTER TABLE parent_child ADD COLUMN birth_status TEXT DEFAULT 'legitimate'");
+        }
+        if (!this._columnExists('parent_child', 'role_label')) {
+          this.db.run("ALTER TABLE parent_child ADD COLUMN role_label TEXT");
         }
         if (!this._columnExists('characters', 'origin')) {
           this.db.run('ALTER TABLE characters ADD COLUMN origin TEXT');
@@ -345,13 +349,26 @@
 
     // ===== Parent-Child =====
     getAllParentChildRelations() { return this._all('SELECT pc.*,p.name as parent_name,p.family_id as parent_family_id,c.name as child_name,c.family_id as child_family_id FROM parent_child pc JOIN characters p ON pc.parent_id=p.id JOIN characters c ON pc.child_id=c.id'); }
-    getParents(cid) { return this._all('SELECT p.*,pc.id as pc_id,pc.relationship_type,pc.birth_status,pc.notes as relation_notes FROM parent_child pc JOIN characters p ON pc.parent_id=p.id WHERE pc.child_id=?', [cid]); }
-    getChildren(cid) { return this._all('SELECT c.*,pc.id as pc_id,pc.relationship_type,pc.birth_status,pc.notes as relation_notes FROM parent_child pc JOIN characters c ON pc.child_id=c.id WHERE pc.parent_id=?', [cid]); }
+    getParents(cid) { return this._all('SELECT p.*,pc.id as pc_id,pc.relationship_type,pc.birth_status,pc.role_label,pc.notes as relation_notes FROM parent_child pc JOIN characters p ON pc.parent_id=p.id WHERE pc.child_id=?', [cid]); }
+    getChildren(cid) { return this._all('SELECT c.*,pc.id as pc_id,pc.relationship_type,pc.birth_status,pc.role_label,pc.notes as relation_notes FROM parent_child pc JOIN characters c ON pc.child_id=c.id WHERE pc.parent_id=?', [cid]); }
     async createParentChild(d) {
       const id = this._id();
-      this._run('INSERT INTO parent_child(id,parent_id,child_id,relationship_type,birth_status,notes) VALUES(?,?,?,?,?,?)',
-        [id, d.parent_id, d.child_id, d.relationship_type||'biological', d.birth_status||'legitimate', d.notes||null]);
+      this._run('INSERT INTO parent_child(id,parent_id,child_id,relationship_type,birth_status,role_label,notes) VALUES(?,?,?,?,?,?,?)',
+        [id, d.parent_id, d.child_id, d.relationship_type||'biological', d.birth_status||'legitimate', d.role_label||null, d.notes||null]);
       await this.save(); return { id, ...d };
+    }
+    async updateParentChild(id, patch) {
+      const fields = [];
+      const values = [];
+      if (patch.relationship_type !== undefined) { fields.push('relationship_type=?'); values.push(patch.relationship_type); }
+      if (patch.birth_status !== undefined) { fields.push('birth_status=?'); values.push(patch.birth_status); }
+      if (patch.role_label !== undefined) { fields.push('role_label=?'); values.push(patch.role_label); }
+      if (patch.notes !== undefined) { fields.push('notes=?'); values.push(patch.notes); }
+      if (!fields.length) return { success: true };
+      values.push(id);
+      this._run(`UPDATE parent_child SET ${fields.join(',')} WHERE id=?`, values);
+      await this.save();
+      return { success: true };
     }
     async deleteParentChild(id) { this._run('DELETE FROM parent_child WHERE id=?', [id]); await this.save(); }
 
@@ -548,10 +565,10 @@
       for (const id of memberIds) {
         marriages.push(...this.getMarriagesByCharacter(id));
         for (const p of this.getParents(id)) {
-          parentChild.push({ parent_id: p.id, child_id: id, relationship_type: p.relationship_type, birth_status: p.birth_status || 'legitimate' });
+          parentChild.push({ parent_id: p.id, child_id: id, relationship_type: p.relationship_type, birth_status: p.birth_status || 'legitimate', role_label: p.role_label || null });
         }
         for (const c of this.getChildren(id)) {
-          parentChild.push({ parent_id: id, child_id: c.id, relationship_type: c.relationship_type, birth_status: c.birth_status || 'legitimate' });
+          parentChild.push({ parent_id: id, child_id: c.id, relationship_type: c.relationship_type, birth_status: c.birth_status || 'legitimate', role_label: c.role_label || null });
         }
         bonds.push(...this.getBondsByCharacter(id));
       }
@@ -615,7 +632,7 @@
       for (const f of data.families || []) this._run('INSERT INTO families(id,name,notes,description,created_at,updated_at) VALUES(?,?,?,?,?,?)', [f.id, f.name, f.notes, f.description, f.created_at, f.updated_at]);
       for (const c of data.characters || []) this._run('INSERT INTO characters(id,name,gender,family_id,birth_date,death_date,avatar_id,notes,is_alive,title,identity,origin,occupation,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [c.id, c.name, c.gender, c.family_id, c.birth_date, c.death_date, c.avatar_id, c.notes, c.is_alive, c.title, c.identity, c.origin, c.occupation, c.tags, c.created_at, c.updated_at]);
       for (const m of data.marriages || []) this._run('INSERT INTO marriages(id,character_a_id,character_b_id,relationship_type,marriage_kind,marriage_date,notes,created_at) VALUES(?,?,?,?,?,?,?,?)', [m.id, m.character_a_id, m.character_b_id, m.relationship_type, m.marriage_kind, m.marriage_date, m.notes, m.created_at]);
-      for (const p of data.parent_child || []) this._run('INSERT INTO parent_child(id,parent_id,child_id,relationship_type,birth_status,notes,created_at) VALUES(?,?,?,?,?,?,?)', [p.id, p.parent_id, p.child_id, p.relationship_type, p.birth_status, p.notes, p.created_at]);
+      for (const p of data.parent_child || []) this._run('INSERT INTO parent_child(id,parent_id,child_id,relationship_type,birth_status,role_label,notes,created_at) VALUES(?,?,?,?,?,?,?,?)', [p.id, p.parent_id, p.child_id, p.relationship_type, p.birth_status, p.role_label||null, p.notes, p.created_at]);
       for (const b of data.bonds || []) this._run('INSERT INTO bonds(id,character_a_id,character_b_id,bond_type,bond_label,color,notes,created_at) VALUES(?,?,?,?,?,?,?,?)', [b.id, b.character_a_id, b.character_b_id, b.bond_type, b.bond_label, b.color, b.notes, b.created_at]);
       for (const l of data.life_events || []) {
         this._run('INSERT INTO life_events(id,character_id,event_date,event_title,event_notes,related_character_ids,category_id,created_at) VALUES(?,?,?,?,?,?,?,?)',

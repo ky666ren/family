@@ -154,11 +154,34 @@
     };
   }
 
-  function renderRow(rowName, label, cards) {
+  function renderRow(rowName, label, cards, opts) {
+    opts = opts || {};
+    const addBtn = opts.hideAdd ? '' : `<button type="button" class="sanzu-row-add" onclick="event.stopPropagation(); window.openSanzuAdd('${escapeHtml(rowName)}')" title="添加${escapeHtml(label)}">＋</button>`;
+    if (opts.splitSelf) {
+      // 两栏：左=本人（无 ＋），右=手足（有 ＋）
+      const selfHtml = opts.selfCardHtml || '<span class="sanzu-empty">无</span>';
+      const sibCards = opts.sibCardsHtml || [];
+      const sibHtml = sibCards.length ? sibCards.join('') : '<span class="sanzu-empty">无</span>';
+      return `
+      <div class="sanzu-row sanzu-row-split-self" data-row="${escapeHtml(rowName)}">
+        <div class="sanzu-row-label">
+          <span class="sanzu-row-label-text">${escapeHtml(label)}</span>
+        </div>
+        <div class="sanzu-row-cols">
+          <div class="sanzu-row-col sanzu-row-col-self">
+            <div class="sanzu-row-col-cards">${selfHtml}</div>
+          </div>
+          <div class="sanzu-row-col sanzu-row-col-siblings">
+            <div class="sanzu-row-col-cards">${sibHtml}</div>
+            <button type="button" class="sanzu-row-add" onclick="event.stopPropagation(); window.openSanzuAdd('${escapeHtml(rowName)}')" title="添加${escapeHtml(label)}">＋</button>
+          </div>
+        </div>
+      </div>
+    `;
+    }
     const cardsHtml = cards.length
       ? cards.join('')
       : '<span class="sanzu-empty">无</span>';
-    const addBtn = `<button type="button" class="sanzu-row-add" onclick="event.stopPropagation(); window.openSanzuAdd('${escapeHtml(rowName)}')" title="添加${escapeHtml(label)}">＋</button>`;
     return `
       <div class="sanzu-row" data-row="${escapeHtml(rowName)}">
         <div class="sanzu-row-label">
@@ -216,15 +239,17 @@
       return personCardHtml(p, { tag, color: COLOR.default, rowKey: 'parents' });
     });
 
-    // 3. 当前人物与手足（本人高亮）
-    const selfCards = r.selfAndSiblings.map(p => {
-      const isCurrent = p.id === currentId;
+    // 3. 当前人物与手足（本人高亮）—— 拆成两栏：本人在左，手足在右
+    const centerChar = data.character;
+    const selfCardHtml = personCardHtml(centerChar, {
+      tag: '本人', isCurrent: true, color: COLOR.default, rowKey: 'self-siblings'
+    });
+    const siblingCardStrs = (data.siblings || []).map(p => {
       let tag = '';
-      if (isCurrent) tag = '本人';
-      else if (p.gender === 'male') tag = '兄弟';
+      if (p.gender === 'male') tag = '兄弟';
       else if (p.gender === 'female') tag = '姐妹';
       else tag = '手足';
-      return personCardHtml(p, { tag, isCurrent, color: COLOR.default, rowKey: 'self-siblings' });
+      return personCardHtml(p, { tag, isCurrent: false, color: COLOR.default, rowKey: 'self-siblings' });
     });
 
     // 4. 妻妾
@@ -262,7 +287,11 @@
         </div>
         ${renderRow('grandparents', '祖父母 / 外祖父母', gpCards)}
         ${renderRow('parents', '父母', parentCards)}
-        ${renderRow('self-siblings', '本人与手足', selfCards)}
+        ${renderRow('self-siblings', '本人与手足', [], {
+          splitSelf: true,
+          selfCardHtml,
+          sibCardsHtml: siblingCardStrs
+        })}
         ${renderRow('spouses', '妻妾', spouseCards)}
         ${renderRow('children', '子女', childCards)}
         ${renderRow('grandchildren', '孙子孙女', gcCards)}
