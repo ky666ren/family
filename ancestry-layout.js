@@ -52,19 +52,27 @@
     const tag = opts.tag || '';
     const isCurrent = !!opts.isCurrent;
     const deceased = person.is_alive === 0;
+    const rowKey = opts.rowKey || '';
     const classes = [
       'sanzu-card',
       isCurrent ? 'sanzu-current' : '',
       deceased ? 'sanzu-deceased' : ''
     ].filter(Boolean).join(' ');
     const tip = [name, tag].filter(Boolean).join(' · ');
+    // 中心人物本人不可删；其他角色显示 × 按钮
+    const removeBtn = !isCurrent
+      ? `<button type="button" class="sanzu-card-del" onclick="event.stopPropagation(); window.removeSanzuRelation('${escapeHtml(rowKey)}','${escapeHtml(person.id)}')" title="解除关系">×</button>`
+      : '';
     return `
-      <button type="button" class="${classes}" data-person-id="${escapeHtml(person.id)}"
+      <div class="${classes}" data-person-id="${escapeHtml(person.id)}" data-row="${escapeHtml(rowKey)}"
         style="color:${color};" title="${escapeHtml(tip)}">
-        <span class="sanzu-card-name">${escapeHtml(name)}</span>
+        <button type="button" class="sanzu-card-name" onclick="event.stopPropagation(); if(window.openCharacterFromSanzu){window.openCharacterFromSanzu('${escapeHtml(person.id)}')}else if(window.viewCharacterDetail){window.viewCharacterDetail('${escapeHtml(person.id)}')}">
+          ${escapeHtml(name)}
+        </button>
         ${tag ? `<span class="sanzu-card-tag">${escapeHtml(tag)}</span>` : ''}
         ${deceased ? '<span class="sanzu-card-tag sanzu-card-tag-deceased">已故</span>' : ''}
-      </button>
+        ${removeBtn}
+      </div>
     `;
   }
 
@@ -150,9 +158,13 @@
     const cardsHtml = cards.length
       ? cards.join('')
       : '<span class="sanzu-empty">无</span>';
+    const addBtn = `<button type="button" class="sanzu-row-add" onclick="event.stopPropagation(); window.openSanzuAdd('${escapeHtml(rowName)}')" title="添加${escapeHtml(label)}">＋</button>`;
     return `
       <div class="sanzu-row" data-row="${escapeHtml(rowName)}">
-        <div class="sanzu-row-label">${escapeHtml(label)}</div>
+        <div class="sanzu-row-label">
+          <span class="sanzu-row-label-text">${escapeHtml(label)}</span>
+          ${addBtn}
+        </div>
         <div class="sanzu-row-cards">${cardsHtml}</div>
       </div>
     `;
@@ -181,25 +193,27 @@
     r.fatherParents.forEach(p => {
       gpCards.push(personCardHtml(p, {
         tag: p.gender === 'male' ? '祖父' : '祖母',
-        color: COLOR.default
+        color: COLOR.default,
+        rowKey: 'grandparents'
       }));
     });
     r.motherParents.forEach(p => {
       gpCards.push(personCardHtml(p, {
         tag: p.gender === 'male' ? '外祖父' : '外祖母',
-        color: COLOR.default
+        color: COLOR.default,
+        rowKey: 'grandparents'
       }));
     });
     if (!gpCards.length && r.grandparents.length) {
       r.grandparents.forEach(p => {
-        gpCards.push(personCardHtml(p, { tag: '祖辈', color: COLOR.default }));
+        gpCards.push(personCardHtml(p, { tag: '祖辈', color: COLOR.default, rowKey: 'grandparents' }));
       });
     }
 
     // 2. 父母
     const parentCards = r.parents.map(p => {
       const tag = p.gender === 'male' ? '父' : (p.gender === 'female' ? '母' : '亲');
-      return personCardHtml(p, { tag, color: COLOR.default });
+      return personCardHtml(p, { tag, color: COLOR.default, rowKey: 'parents' });
     });
 
     // 3. 当前人物与手足（本人高亮）
@@ -210,12 +224,12 @@
       else if (p.gender === 'male') tag = '兄弟';
       else if (p.gender === 'female') tag = '姐妹';
       else tag = '手足';
-      return personCardHtml(p, { tag, isCurrent, color: COLOR.default });
+      return personCardHtml(p, { tag, isCurrent, color: COLOR.default, rowKey: 'self-siblings' });
     });
 
     // 4. 妻妾
     const spouseCards = r.spouses.map(({ person, kind }) =>
-      personCardHtml(person, { tag: getSpouseLabel(kind), color: getSpouseColor(kind) })
+      personCardHtml(person, { tag: getSpouseLabel(kind), color: getSpouseColor(kind), rowKey: 'spouses' })
     );
 
     // 5. 子女
@@ -224,7 +238,7 @@
       const color = getChildColor(meta.relationship_type, meta.birth_status);
       let tag = getChildLabel(meta.relationship_type, meta.birth_status);
       if (!tag) tag = c.gender === 'male' ? '子' : (c.gender === 'female' ? '女' : '子女');
-      return personCardHtml(c, { tag, color });
+      return personCardHtml(c, { tag, color, rowKey: 'children' });
     });
 
     // 6. 孙子孙女
@@ -233,7 +247,7 @@
       const color = getChildColor(meta.relationship_type, meta.birth_status);
       let tag = getChildLabel(meta.relationship_type, meta.birth_status);
       if (!tag) tag = c.gender === 'male' ? '孙' : (c.gender === 'female' ? '孙女' : '孙辈');
-      return personCardHtml(c, { tag, color });
+      return personCardHtml(c, { tag, color, rowKey: 'grandchildren' });
     });
 
     canvas.innerHTML = `

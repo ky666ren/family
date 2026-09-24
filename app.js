@@ -1895,7 +1895,7 @@ function getSelectedDetailRelationIds(characterId, kind, role) {
     })
     .map(relation => config.mode === 'parent' ? relation.parent_id : relation.child_id));
 }
-async function openDetailRelationModal(characterId, kind, role) {
+async function openDetailRelationModal(characterId, kind, role, refreshCallback, extraOpts) {
   const config = DETAIL_RELATION_CONFIG[kind];
   if (!config) return;
   const [allCharacters, allRelations] = await Promise.all([
@@ -1904,7 +1904,12 @@ async function openDetailRelationModal(characterId, kind, role) {
   ]);
   characters = allCharacters;
   parentChildRelations = allRelations;
-  detailRelationContext = { characterId, kind, config, role: role || config.role };
+  detailRelationContext = {
+    characterId, kind, config,
+    role: role || config.role,
+    refreshCallback: typeof refreshCallback === 'function' ? refreshCallback : null,
+    sharedParentId: extraOpts && extraOpts.sharedParentId ? extraOpts.sharedParentId : null
+  };
   const input = document.getElementById('detail-relation-candidate');
   const hidden = document.getElementById('detail-relation-candidate-id');
   if (input) {
@@ -2026,14 +2031,29 @@ async function saveDetailRelation(event) {
     showToast('请选择人物', 'error');
     return;
   }
-  const { characterId, config, role } = detailRelationContext;
+  const { characterId, config, role, refreshCallback, sharedParentId, kind } = detailRelationContext;
   const relationshipType = document.getElementById('detail-relation-type').value;
   const birthStatus = document.getElementById('detail-relation-birth-status').value;
   // 称谓从下拉框读取（用户可改），缺省回退到 context.role
   const roleSelect = document.getElementById('detail-relation-role');
   const chosenRole = (roleSelect && roleSelect.value) ? roleSelect.value : (role || null);
   try {
-    if (config.mode === 'sibling') {
+    if (kind === 'sibling-shared' && sharedParentId) {
+      // 仅建立与指定父辈的亲子关系，让新人物成为中心人物的手足
+      const exists = parentChildRelations.some(r => r.parent_id === sharedParentId && r.child_id === selectedId);
+      if (exists) {
+        showToast('该人物已经是手足', 'error');
+        return;
+      }
+      await api.post('/api/parent-child', {
+        parent_id: sharedParentId,
+        child_id: selectedId,
+        relationship_type: 'biological',
+        birth_status: 'legitimate',
+        role_label: null,
+        notes: null
+      });
+    } else if (config.mode === 'sibling') {
       const parentRelations = parentChildRelations.filter(relation => relation.child_id === characterId);
       if (!parentRelations.length) {
         showToast('请先为当前人物添加父亲或母亲，再添加兄弟姐妹', 'error');
@@ -2067,7 +2087,11 @@ async function saveDetailRelation(event) {
     }
     closeDetailRelationModal();
     await loadCharacters();
-    await viewCharacterDetail(characterId);
+    if (refreshCallback) {
+      await refreshCallback();
+    } else if (currentCharacterId === characterId) {
+      await viewCharacterDetail(characterId);
+    }
     const titleLabel = chosenRole ? getRoleLabelText(chosenRole) : config.label;
     showToast(`${titleLabel}已添加`);
   } catch (error) {
@@ -2122,6 +2146,11 @@ async function saveParentChild(e) {
     await loadCharacters();
     if (currentCharacterId) {
       viewCharacterDetail(currentCharacterId);
+      // 若三族谱图打开，也刷新它
+      const ancestry = document.getElementById('ancestry-modal');
+      if (ancestry && ancestry.classList.contains('active')) {
+        await openAncestry(currentCharacterId);
+      }
     }
   } catch (e) {
     showToast('保存失败: ' + e.message, 'error');
@@ -3587,6 +3616,9 @@ async function openAncestry(characterId) {
       .filter(Boolean);
     const title = document.getElementById('ancestry-title');
     if (title) title.textContent = `${data.character.name} · 三族谱系图`;
+    // 三族谱系图上需要 currentCharacterId 才能知道中心人物
+    currentCharacterId = characterId;
+    currentCharacter = data.character;
     resetAncestryZoom();
     const currentCenter = renderAncestryTree(data);
     document.getElementById('ancestry-modal').classList.add('active');
@@ -3609,6 +3641,193 @@ function closeAncestry() {
   document.body.classList.remove('ancestry-open');
   document.documentElement.classList.remove('ancestry-open');
 }
+
+// ============== 三族谱系图内联增删关系 ==============
+// 在三族谱系图页面直接增/删关系，不必打开角色详情弹窗。
+// ＋ 按钮调 openSanzuAdd(rowKey)；× 按钮调 removeSanzuRelation(rowKey, personId)。
+
+function _sanzuCenterId() {
+  // 三族谱系图页面的中心人物 id 即 currentCharacterId
+  return currentCharacterId;
+}
+
+async function _sanzuDeletePcs(ids) {
+  if (!ids || !ids.length) return false;
+  await Promise.all(ids.map(id => api.delete(`/api/parent-child/${id}`)));
+  return true;
+}
+
+async function _sanzuRefresh() {
+  await loadCharacters();
+  if (currentCharacterId) await openAncestry(currentCharacterId);
+}
+
+window.openSanzuAdd = function(rowKey) {
+  const charId = _sanzuCenterId();
+  if (!charId) return;
+  if (rowKey === 'parents')       return openParentChildModal(charId, 'parent');
+  if (rowKey === 'children')      return openParentChildModal(charId, 'child');
+  if (rowKey === 'spouses')       return openMarriageModal(charId);
+  if (rowKey === 'grandparents')  return openAddGrandparentModal(charId);
+  if (rowKey === 'self-siblings') return openAddSiblingModal(charId);
+  if (rowKey === 'grandchildren') return openAddGrandchildModal(charId);
+};
+
+window.removeSanzuRelation = async function(rowKey, personId) {
+  const charId = _sanzuCenterId();
+  if (!charId || !personId) return;
+  if (!confirm('确定要解除这段关系吗？')) return;
+  try {
+    const relations = parentChildRelations || await api.get('/api/parent-child');
+    let ids = [];
+    if (rowKey === 'parents') {
+      ids = relations.filter(r => r.parent_id === personId && r.child_id === charId).map(r => r.id);
+    } else if (rowKey === 'children') {
+      ids = relations.filter(r => r.parent_id === charId && r.child_id === personId).map(r => r.id);
+    } else if (rowKey === 'self-siblings') {
+      // 手足：删除 personId 与主父/主母的亲子关系（让手足脱离中心家族）
+      ids = relations.filter(r => r.child_id === personId).map(r => r.id);
+    } else if (rowKey === 'grandparents') {
+      // 祖辈：personId 是祖父/祖母，其子是中心人物的主父/主母
+      ids = relations.filter(r => r.parent_id === personId).map(r => r.id);
+    } else if (rowKey === 'grandchildren') {
+      // 孙辈：删除 personId 与其父/母（中心人物的子女）的亲子关系
+      ids = relations.filter(r => r.child_id === personId).map(r => r.id);
+    } else if (rowKey === 'spouses') {
+      const marriages = await api.get(`/api/marriages?character_id=${charId}`);
+      const m = marriages.find(x => x.character_a_id === personId || x.character_b_id === personId);
+      if (m) return await deleteMarriage(m.id);
+    }
+    if (!ids.length) {
+      showToast('未找到对应关系', 'error');
+      return;
+    }
+    await _sanzuDeletePcs(ids);
+    showToast('关系已解除');
+    await _sanzuRefresh();
+  } catch (e) {
+    showToast('解除失败: ' + e.message, 'error');
+  }
+};
+
+window.openCharacterFromSanzu = function(personId) {
+  if (!personId) return;
+  // 切到人物详情后，再由用户决定是否打开三族谱系图
+  viewCharacterDetail(personId);
+};
+
+// ----- 祖辈 / 手足 / 孙辈 添加弹窗 -----
+// 复用现有 detail-relation-modal：根据"添加谁"自动选择父/母方向
+
+async function openAddGrandparentModal(charId) {
+  // 先选"添加谁的父亲/母亲"。从父/母节点入手。
+  await loadAllCharacters();
+  const char = characters.find(c => c.id === charId);
+  if (!char) return;
+  const relations = await api.get(`/api/parent-child?character_id=${charId}`);
+  const fathers = relations.parents.filter(p => p.gender === 'male');
+  const mothers = relations.parents.filter(p => p.gender === 'female');
+  // 弹一个简易选择框
+  const html = `
+    <p>请选择要为哪位父辈添加祖辈：</p>
+    <div class="sanzu-quickpick">
+      <h5>父系</h5>
+      ${fathers.map(p => `<button type="button" class="sanzu-quickpick-btn" data-id="${p.id}" data-gender="male">${escapeHtml(p.name)} 之 ${p.gender === 'male' ? '父' : '母'}</button>`).join('') || '<span class="sanzu-empty">无</span>'}
+      <h5>母系</h5>
+      ${mothers.map(p => `<button type="button" class="sanzu-quickpick-btn" data-id="${p.id}" data-gender="female">${escapeHtml(p.name)} 之 ${p.gender === 'male' ? '父' : '母'}</button>`).join('') || '<span class="sanzu-empty">无</span>'}
+    </div>
+  `;
+  showQuickModal('添加祖辈', html, (root) => {
+    root.querySelectorAll('.sanzu-quickpick-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const parentId = btn.dataset.id;
+        const gender = btn.dataset.gender;
+        closeQuickModal();
+        openDetailRelationModal(parentId, 'parent', gender === 'male' ? 'father' : 'mother', /* refreshCallback */ () => _sanzuRefresh());
+      });
+    });
+  });
+}
+
+async function openAddSiblingModal(charId) {
+  await loadAllCharacters();
+  const char = characters.find(c => c.id === charId);
+  if (!char) return;
+  const relations = await api.get(`/api/parent-child?character_id=${charId}`);
+  const fathers = relations.parents.filter(p => p.gender === 'male');
+  const mothers = relations.parents.filter(p => p.gender === 'female');
+  const html = `
+    <p>请选择要让新人物与谁共享父辈：</p>
+    <div class="sanzu-quickpick">
+      <h5>同父</h5>
+      ${fathers.map(p => `<button type="button" class="sanzu-quickpick-btn" data-id="${p.id}" data-gender="male">${escapeHtml(p.name)}</button>`).join('') || '<span class="sanzu-empty">无</span>'}
+      <h5>同母</h5>
+      ${mothers.map(p => `<button type="button" class="sanzu-quickpick-btn" data-id="${p.id}" data-gender="female">${escapeHtml(p.name)}</button>`).join('') || '<span class="sanzu-empty">无</span>'}
+    </div>
+    <p class="hint" style="margin-top:12px;color:#8b6a4a;font-size:12px;">提示：选择后弹窗"添加关系"，把新人物作为<strong>${escapeHtml(char.name)}</strong>的<strong>${'同父/同母'}</strong>录入。</p>
+  `;
+  showQuickModal('添加手足', html, (root) => {
+    root.querySelectorAll('.sanzu-quickpick-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const parentId = btn.dataset.id;
+        closeQuickModal();
+        // 通过共享 parent 让"中心人物"与新人物成为手足
+        openDetailRelationModal(charId, 'sibling-shared', null, () => _sanzuRefresh(), { sharedParentId: parentId });
+      });
+    });
+  });
+}
+
+async function openAddGrandchildModal(charId) {
+  await loadAllCharacters();
+  const relations = await api.get(`/api/parent-child?character_id=${charId}`);
+  const children = relations.children || [];
+  if (!children.length) {
+    showToast('请先添加子女，再添加孙辈', 'info');
+    return;
+  }
+  const html = `
+    <p>请选择孙辈的父/母（你的子女）：</p>
+    <div class="sanzu-quickpick">
+      ${children.map(c => `<button type="button" class="sanzu-quickpick-btn" data-id="${c.id}">${escapeHtml(c.name)}（${c.gender === 'male' ? '子' : '女'}）</button>`).join('')}
+    </div>
+  `;
+  showQuickModal('添加孙辈', html, (root) => {
+    root.querySelectorAll('.sanzu-quickpick-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const childId = btn.dataset.id;
+        closeQuickModal();
+        openDetailRelationModal(childId, 'parent', 'father', () => _sanzuRefresh());
+      });
+    });
+  });
+}
+
+// 简易选择弹窗
+let _quickModalEl = null;
+function showQuickModal(title, bodyHtml, onMount) {
+  closeQuickModal();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-overlay active';
+  wrap.id = 'sanzu-quick-modal';
+  wrap.innerHTML = `
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h3>${escapeHtml(title)}</h3>
+        <button class="modal-close" onclick="closeQuickModal()">×</button>
+      </div>
+      <div class="modal-body">${bodyHtml}</div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+  _quickModalEl = wrap;
+  if (onMount) onMount(wrap);
+}
+function closeQuickModal() {
+  if (_quickModalEl && _quickModalEl.parentNode) _quickModalEl.parentNode.removeChild(_quickModalEl);
+  _quickModalEl = null;
+}
+window.closeQuickModal = closeQuickModal;
 
 function openCharacterFromAncestry(id) {
   closeAncestry();

@@ -1413,6 +1413,12 @@ body.ancestry-open {
   z-index: 1200;
 }
 
+/* 在 ancestry-overlay (z-index 1000) 之上弹出添加/删除等子层 modal */
+.modal#detail-relation-modal,
+.modal-overlay#sanzu-quick-modal {
+  z-index: 1300;
+}
+
 .modal-content {
   border-radius: 4px;
   width: 90%;
@@ -2826,6 +2832,7 @@ textarea#life-event-notes.is-drag-over {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   padding: 10px 8px;
   font-size: 15px;
   font-weight: 700;
@@ -2836,6 +2843,32 @@ textarea#life-event-notes.is-drag-over {
   border-radius: 4px;
   text-align: center;
   line-height: 1.4;
+  position: relative;
+}
+
+.sanzu-row-label-text {
+  flex: 1;
+  text-align: center;
+}
+
+.sanzu-row-add {
+  background: transparent;
+  border: 1px dashed #c9a832;
+  color: #8b6a4a;
+  padding: 0 7px;
+  height: 24px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all 0.18s;
+}
+.sanzu-row-add:hover {
+  background: #c9a832;
+  color: #4a1515;
+  border-style: solid;
 }
 
 .sanzu-row-cards {
@@ -2857,8 +2890,9 @@ textarea#life-event-notes.is-drag-over {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  position: relative;
   min-width: 88px;
-  padding: 10px 14px;
+  padding: 10px 22px 10px 14px;
   background: #fdf6e3;
   border: 1.5px solid #8b6a4a;
   border-radius: 4px;
@@ -2867,6 +2901,45 @@ textarea#life-event-notes.is-drag-over {
   transition: all 0.15s;
   text-align: center;
   gap: 2px;
+}
+
+.sanzu-card-name {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.2;
+  word-break: break-all;
+}
+
+.sanzu-card-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: rgba(192, 57, 43, 0.45);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  font-family: inherit;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sanzu-card-del:hover {
+  background: rgba(192, 57, 43, 0.12);
+  color: #c0392b;
 }
 
 .sanzu-card:hover {
@@ -2879,14 +2952,6 @@ textarea#life-event-notes.is-drag-over {
   outline: none;
   border-color: #9a6f08;
   box-shadow: 0 0 0 3px rgba(201, 168, 50, 0.4);
-}
-
-.sanzu-card-name {
-  font-weight: 700;
-  font-size: 17px;
-  line-height: 1.2;
-  word-break: break-all;
-  /* color 来自父级 button 的 inline style */
 }
 
 .sanzu-card-tag {
