@@ -10,126 +10,115 @@
 - 往事录（按角色 + 分类 + 标签筛选），分类与标签均可自定义
 - 单文件 JSON 备份 / 恢复（含元数据，可追溯导出时间与所属章节）
 
-## 快速开始
+## 两种运行模式
+
+本项目既支持 **GitHub Pages（推荐）** 也支持 **本地 Node.js**，两种模式**用同一套代码**，只是数据存储位置不同。
+
+| 模式 | 数据存在哪 | 适用场景 |
+| --- | --- | --- |
+| **GitHub Pages 模式**（默认） | 浏览器 IndexedDB + localStorage | 个人使用，访问 `https://<user>.github.io/<repo>/` 即可 |
+| **本地 Node.js 模式** | 服务器文件系统 | 离线使用 / 不愿意把数据放浏览器时 |
+
+## 部署到 GitHub Pages（推荐，零配置）
+
+> 整个 `public/` 目录就是网站。**没有后端**，GitHub Pages 直接托管即可。
+
+### 一次性设置
+
+1. 在 GitHub 网页上新建一个空仓库（不要勾选 README/.gitignore/license），记下仓库地址
+2. 本地：
+   ```bash
+   cd E:\test\family
+   git init        # 已经在做的话跳过
+   git add .
+   git commit -m "feat: 浏览器版家族树管理工具"
+   git branch -M main
+   git remote add origin git@github.com:<your-name>/<repo>.git
+   git push -u origin main
+   ```
+3. 在 GitHub 仓库页 → **Settings → Pages**：
+   - Source: **Deploy from a branch**
+   - Branch: `main`，Folder: **`/public`**
+   - Save
+4. 等待 1-2 分钟，访问 `https://<your-name>.github.io/<repo>/` 即可看到应用
+
+### 首次使用
+
+打开页面后，应用会自动创建一个默认篇章（名为「默认篇章」）。所有数据存在浏览器的 IndexedDB 中，**只在这台电脑的浏览器里可见**。
+
+> ⚠️ 如果你想换浏览器或电脑使用，需要先用「导出备份」保存 JSON 文件，到新环境再「导入恢复」。
+
+## 本地 Node.js 模式（可选）
 
 ### 环境要求
 
 - Node.js 18 及以上
 - npm
 
-### 安装与启动
+### 启动
 
 ```bash
 npm install
 npm start
 ```
 
-启动后访问 <http://localhost:3000>。也可双击根目录下的 `启动服务器.bat`。
+浏览器访问 <http://localhost:3000>。同样用浏览器 IndexedDB 存数据——server.js 现在只是个静态文件服务器，没有 REST 接口。
 
-首次启动会自动创建 `family_tree.db` 和 `config.json`，不需要任何额外配置。
+### 自定义配置（可选）
 
-### 自定义配置
-
-可通过 `config.json` 调整：
-
-```json
-{
-  "dbPath": "family_tree.db",
-  "eraName": "",
-  "activeChapterId": null
-}
-```
-
-- `dbPath`：默认数据库路径（相对项目根目录或绝对路径均可）
-- `eraName`：界面顶部的时代 / 纪年显示
-- `activeChapterId`：当前激活的篇章 ID（在 UI 中切换后会自动写入）
-
-也可以直接把 `config.example.json` 复制为 `config.json` 后修改。
+`config.example.json` 复制为 `config.json` 后修改。Node.js 模式下，server.js 会读取 `config.json` 中的 `eraName` 显示在界面顶部。
 
 ## 数据存储
 
-| 类型 | 位置 | 是否入 Git |
-| --- | --- | --- |
-| 默认数据库 | `family_tree.db` | ❌ |
-| 篇章数据库 | `chapters/<id>.db` | ❌ |
-| 章节列表 | `chapters.json` | ❌ |
-| 运行时配置 | `config.json` | ❌ |
+| 类型 | 位置（GitHub Pages） | 位置（Node.js） | 是否入 Git |
+| --- | --- | --- | --- |
+| 每个篇章的 SQLite 数据 | IndexedDB `chapter:<id>` 键 | 不使用 | ❌ |
+| 篇章列表、激活 ID、eraName | `localStorage` 键 `ftm:chapters` / `ftm:config` | `localStorage`（仍走浏览器） | ❌ |
+| 旧配置（可忽略） | — | `config.json` / `chapters.json` / `*.db`（gitignored） | ❌ |
 
-这些文件均已在 `.gitignore` 中排除，建议用 GitHub / 网盘等做异地备份，或使用应用自带的「导出备份」功能。
+**GitHub Pages 模式下，所有数据只存在你自己的浏览器里**，不会上传到任何服务器；GitHub Pages 只托管静态 JS 文件。
 
 ## 导入导出
 
 应用内「设置 → 备份与恢复」中提供：
 
-- **导出备份**：把当前激活篇章的全部数据导出为单个 JSON 文件。文件名形如 `family-tree_<章节名>_<时间戳>.json`，文件本体携带 `format` / `version` / `chapter` 等元数据，方便溯源。
+- **导出备份**：把当前激活篇章的全部数据导出为单个 JSON 文件。文件名形如 `family-tree_<章节名>_<时间戳>.json`，文件本体携带 `format` / `version` / `chapter` 等元数据。
 - **导入恢复**：选择 JSON 文件，会清空当前篇章数据并替换为文件内容。导入兼容：
-
   - 新版（带 `format: family-tree-manager-backup` 包裹的格式）
   - 旧版（直接平铺业务表的格式）
 
 > ⚠️ 导入为「全量覆盖」，会清空当前篇章的家族 / 角色 / 关系 / 记事 / 标签。导入前请先导出当前数据作为兜底。
 
-### 手动备份建议
-
-把 `family_tree.db`、`chapters/*.db`、`chapters.json` 一并复制到外部位置即可。
-
 ## 项目结构
 
 ```
 .
-├── server.js              # Express 入口、API 路由
-├── database.js            # sql.js 封装的数据库类（含 schema / 增删改查 / 导入导出）
-├── package.json
-├── config.example.json    # 配置示例
-├── public/                # 前端静态资源
+├── public/                      # GitHub Pages 静态托管的目录（也是本地开发的服务根）
 │   ├── index.html
-│   ├── app.js
-│   ├── style.css
-│   └── ancestry-layout.js
-├── chapters/              # 篇章数据库（运行时生成）
-└── .gitignore
+│   ├── app.js                   # 前端逻辑
+│   ├── database.js              # UMD：浏览器用 IndexedDB、Node.js 用 fs，sql.js 在浏览器从 CDN 加载
+│   ├── db-api.js                # 浏览器端 API shim：把 fetch('/api/...') 调用映射到 db 方法
+│   ├── ancestry-layout.js
+│   └── style.css
+├── database.js                  # 旧 Node.js-only 版本（保留以兼容老引用，server.js 仍能 require）
+├── server.js                    # 本地开发用的简易静态服务器
+├── config.example.json          # 配置示例（仅本地模式会用）
+├── package.json
+└── README.md
 ```
 
-## API 概览
+## 工作原理（简版）
 
-| 路由 | 方法 | 说明 |
-| --- | --- | --- |
-| `/api/chapters` | GET / POST | 列出 / 新建篇章 |
-| `/api/chapters/:id/activate` | POST | 切换激活篇章 |
-| `/api/chapters/:id` | DELETE | 删除篇章 |
-| `/api/config` | GET / POST | 读取 / 更新全局配置 |
-| `/api/families` `/api/families/:id` | GET / POST / PUT / DELETE | 家族 CRUD |
-| `/api/characters` `/api/characters/:id` | GET / POST / PUT / DELETE | 角色 CRUD |
-| `/api/marriages` `/api/marriages/:id` | GET / POST / DELETE | 婚姻 |
-| `/api/parent-child` `/api/parent-child/:id` | GET / POST / DELETE | 亲子关系 |
-| `/api/bonds` `/api/bonds/:id` | GET / POST / DELETE | 次要羁绊 |
-| `/api/life-events` `/api/life-events/:id` | GET / POST / PUT / DELETE | 往事录 |
-| `/api/life-event-categories` | GET / POST / PUT / DELETE | 往事录分类 |
-| `/api/tags` | GET / POST / PUT / DELETE | 标签 |
-| `/api/tree/:characterId` | GET | 以某角色为中心的家族树快照 |
-| `/api/export` | GET | 导出当前篇章为 JSON |
-| `/api/import` | POST | 从 JSON 恢复当前篇章 |
+- `public/database.js`（UMD）：把 sql.js（SQLite 编译成 WASM）包装成一个 `FamilyTreeDB` 类，存储层做环境判断：Node.js 用 `fs`、浏览器用 IndexedDB
+- `public/db-api.js`：把 `/api/families` `/api/characters` 之类 30+ 个 REST 路径，全部映射到对应的 `FamilyTreeDB` 方法上，让 `app.js` 不需要修改
+- `public/index.html`：依次加载 sql.js（CDN）→ database.js → db-api.js → app.js，无需 build 步骤
 
-## 部署到 GitHub
+## 协作时注意
 
-本项目**不包含任何用户数据**，可以直接推送到 GitHub。典型步骤：
-
-```bash
-git init
-git add .
-git commit -m "feat: 初始化家族树管理工具"
-git branch -M main
-git remote add origin git@github.com:<your-name>/<your-repo>.git
-git push -u origin main
-```
-
-如果还没有 GitHub 仓库，先在 <https://github.com/new> 创建一个空仓库（不要勾选任何初始化选项），再执行上面的命令。
-
-### 协作时注意
-
-- 首次 `git clone` 后，请复制 `config.example.json` 为 `config.json`，再启动 `npm install && npm start`
-- 不要把 `family_tree.db` / `chapters/*.db` / `chapters.json` / `config.json` 提交进去 —— 它们已经写在 `.gitignore` 里
-- 如需分享数据，请用应用内的「导出备份」功能，把 JSON 文件发给对方
+- 首次 `git clone` 后，浏览器模式无需任何配置，直接 `npm install && npm start` 或推到 GitHub Pages 即可
+- 数据是**按浏览器隔离**的：在 Chrome 上导出的 JSON，要在 Safari 上导入后才能看到；想换电脑必须走导入导出
+- 不要把 `*.db` / `config.json` / `chapters.json` 提交进去 —— 它们已经写在 `.gitignore` 里
+- 跨浏览器 / 跨设备同步：用应用内的「导出备份」功能，把 JSON 文件发给对方
 
 ## 许可证
 

@@ -733,8 +733,14 @@
 
   <datalist id="character-datalist"></datalist>
 
-  <script src="app.js?v=20260828-2"></script>
+  <!-- sql.js（WASM 版 SQLite）从 CDN 加载 -->
+  <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
+  <!-- 数据库层（浏览器用 IndexedDB 持久化） -->
+  <script src="database.js"></script>
+  <!-- API shim：把 app.js 里的 fetch('/api/...') 映射到 db 方法 -->
+  <script src="db-api.js"></script>
   <script src="ancestry-layout.js?v=20260828-2"></script>
+  <script src="app.js?v=20260828-2"></script>
 </body>
 </html>
 

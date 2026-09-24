@@ -21,36 +21,41 @@ let lifeEventCategoryId = null;
 let editingLifeEventId = null;
 
 // ===== API Helpers =====
-const api = {
-  async get(url) {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return response.json();
-  },
-  async post(url, data) {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return response.json();
-  },
-  async put(url, data) {
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return response.json();
-  },
-  async delete(url) {
-    const response = await fetch(url, { method: 'DELETE' });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return response.json();
-  }
-};
+// `api` 由 db-api.js 在 window 上提供（GitHub Pages / 静态托管模式）。
+// 兼容老 Node.js 启动方式：如果 window.api 未定义，则降级用 fetch 调用本地 Express。
+if (typeof window !== 'undefined' && !window.api) {
+  window.api = {
+    async get(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return response.json();
+    },
+    async post(url, data) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return response.json();
+    },
+    async put(url, data) {
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return response.json();
+    },
+    async delete(url) {
+      const response = await fetch(url, { method: 'DELETE' });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return response.json();
+    }
+  };
+}
+const api = window.api;
 
 // ===== Toast Notification =====
 function showToast(message, type = 'success') {
