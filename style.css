@@ -2065,10 +2065,196 @@ form {
   border-color: #999999;
 }
 
+/* ========================================================================
+   亲属关系区：行式大纲（祖辈 / 父母 / 长辈 / 后院 / 手足 / 子辈 / 孙辈）
+   ----------------------------------------------------------------------
+   设计原则：
+   1. 大类标题可点击折叠/展开（▼/▶），默认展开
+   2. 大类下方缩进列出具体的人物，每行：
+      [称谓]  [小色点]  <a class="relation-name">人名</a>  [删除]
+   3. 仅人名带下划线、可点击跳转；称谓和元数据用普通文字
+   4. 颜色仅作小色点提示（不喧宾夺主），不画背景色块
+   ======================================================================== */
+
+.relation-section {
+  margin: 6px 0 10px;
+  padding: 4px 0 0;
+  border-top: 1px dashed #ead9b0;
+}
+.relation-section:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+
+.relation-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 8px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 2px;
+  transition: background 0.18s;
+}
+.relation-section-header:hover {
+  background: rgba(201, 168, 50, 0.08);
+}
+
+.relation-section-toggle {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: #8b6a4a;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.relation-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #4a1515;
+  letter-spacing: 2px;
+  flex: 1;
+}
+
+.relation-section-count {
+  font-size: 11px;
+  color: rgba(74, 21, 21, 0.45);
+  font-weight: 500;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.relation-section-add {
+  background: transparent;
+  border: 1px dashed #c9a832;
+  color: #8b6a4a;
+  padding: 1px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 2px;
+  font-family: inherit;
+  line-height: 1.5;
+  transition: all 0.18s;
+  flex-shrink: 0;
+}
+.relation-section-add:hover {
+  background: #c9a832;
+  color: #4a1515;
+  border-style: solid;
+}
+
+.relation-section-list {
+  list-style: none;
+  margin: 4px 0 6px;
+  padding: 0 0 0 20px;
+}
+
+.relation-section.collapsed .relation-section-list {
+  display: none;
+}
+.relation-section.collapsed .relation-section-header {
+  padding-bottom: 4px;
+}
+
+/* 行内单项 */
+.relation-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px dotted rgba(184, 134, 11, 0.18);
+  font-size: 13.5px;
+}
+.relation-line:last-child {
+  border-bottom: none;
+}
+
+.relation-line-role {
+  min-width: 36px;
+  font-weight: 500;
+  color: #4a1515;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.relation-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #8b6a4a;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+/* 颜色：按身份类型提示 */
+.dot-main           { background: #9a6f08; }    /* 主父/主母/亲子 */
+.dot-birth          { background: #c0392b; }    /* 生父/生母 */
+.dot-adoptive       { background: #6f8f6f; }    /* 养 */
+.dot-sworn          { background: #4a6a7a; }    /* 义 */
+.dot-grandparent    { background: #8b6a4a; }    /* 祖辈 */
+.dot-elder          { background: #8b5a8b; }    /* 长辈（伯/叔/姑/舅/姨） */
+.dot-sibling        { background: #b8860b; }    /* 手足嫡/堂/表 */
+.dot-sibling-half   { background: #d4904a; }    /* 手足庶 */
+.dot-spouse         { background: #c0392b; }    /* 妻 / 夫 */
+.dot-spouse-conc    { background: #d8838b; }    /* 妾 */
+.dot-spouse-equal   { background: #b8860b; }    /* 平妻 */
+.dot-nephew         { background: #5e7d8b; }    /* 侄/甥 */
+.dot-grandchild     { background: #8b6a4a; }    /* 孙辈 */
+.dot-default        { background: #aaa; }
+
+/* 唯一带下划线的部分 —— 人名 */
+.relation-name {
+  color: #4a1515;
+  text-decoration: underline;
+  text-decoration-color: rgba(74, 21, 21, 0.35);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  transition: color 0.18s, text-decoration-color 0.18s;
+}
+.relation-name:hover {
+  color: #c0392b;
+  text-decoration-color: #c0392b;
+}
+
+.relation-line-meta {
+  font-size: 11px;
+  color: rgba(74, 21, 21, 0.5);
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.relation-line-del {
+  background: transparent;
+  border: none;
+  color: rgba(192, 57, 43, 0.5);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: auto;
+  line-height: 1;
+  font-family: inherit;
+  transition: color 0.18s;
+}
+.relation-line-del:hover {
+  color: #c0392b;
+}
+
+/* 兼容旧关系卡片的样式（宿命羁绊、往事录的 .relation-item） */
 .relation-item .relation-name {
   font-weight: 500;
 }
-
+.relation-item .relation-subtitle {
+  color: rgba(74, 21, 21, 0.55);
+  font-size: 11px;
+  margin-left: 2px;
+  letter-spacing: 1px;
+}
 .relation-item .relation-type {
   color: #8b6a4a;
   font-size: 11px;

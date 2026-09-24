@@ -960,24 +960,303 @@ function getSiblingIds(characterId, relations = parentChildRelations) {
   return siblingIds;
 }
 
-function renderDetailRelationRow(label, items, addAction) {
-  const chips = items.map(item => `
-    <div class="relation-item ${item.className || ''}">
-      <span class="relation-name" onclick="viewCharacterDetail('${item.id}')">${escapeHtml(item.name)}</span>
-      ${item.type ? `<span class="relation-type">${item.type}</span>` : ''}
-      ${item.deleteAction ? `<button class="btn btn-sm btn-danger" onclick="${item.deleteAction}">×</button>` : ''}
-    </div>
-  `).join('');
+// ============== 关系区：行式大纲 ==============
+//
+// 大类（如"父母"）作为可折叠 section；每个 section 内缩进列出具体的人，
+// 每行格式：[称谓] [小色点] <a class="relation-name">人名</a> [删除]
+// 仅人名带下划线、可点击跳转；称谓和身份用文字 + 色点提示，不喧宾夺主。
+
+function renderRelationLine(item) {
+  const dotClass = item.dot || 'dot-default';
   return `
-    <div class="detail-relation-row">
-      <div class="detail-relation-label"><span class="detail-relation-bullet">•</span>${label}</div>
-      <div class="detail-relation-values">
-        ${chips || '<span class="detail-relation-empty">未设置</span>'}
-        <button class="detail-relation-add" onclick="${addAction}" title="添加${label}">＋</button>
-      </div>
-    </div>
+    <li class="relation-line" data-role="${escapeHtml(item.role || '')}">
+      <span class="relation-line-role">${escapeHtml(item.roleLabel || '亲属')}</span>
+      <span class="relation-dot ${dotClass}" aria-hidden="true"></span>
+      <a class="relation-name" href="javascript:void(0)" onclick="viewCharacterDetail('${item.id}')">${escapeHtml(item.name)}</a>
+      ${item.genderLabel ? `<span class="relation-line-meta">${escapeHtml(item.genderLabel)}</span>` : ''}
+      ${item.deleteAction ? `<button class="relation-line-del" onclick="${item.deleteAction}" title="解除">×</button>` : ''}
+    </li>
   `;
 }
+
+function renderRelationSection(key, label, items, addAction, sectionOpts = {}) {
+  if (!items || !items.length) return '';
+  const collapsed = sectionOpts.collapsed ? ' collapsed' : '';
+  const toggle = collapsed ? '▶' : '▼';
+  const lines = items.map(renderRelationLine).join('');
+  const addBtn = addAction
+    ? `<button class="relation-section-add" onclick="${addAction}" title="添加${escapeHtml(label)}">＋</button>`
+    : '';
+  return `
+    <section class="relation-section${collapsed}" data-key="${escapeHtml(key)}">
+      <header class="relation-section-header" onclick="toggleRelationSection('${escapeHtml(key)}')">
+        <span class="relation-section-toggle">${toggle}</span>
+        <h4 class="relation-section-title">${escapeHtml(label)}</h4>
+        <span class="relation-section-count">${items.length}</span>
+        ${addBtn}
+      </header>
+      <ul class="relation-section-list">${lines}</ul>
+    </section>
+  `;
+}
+
+function toggleRelationSection(key) {
+  const section = document.querySelector(`.relation-section[data-key="${key}"]`);
+  if (!section) return;
+  section.classList.toggle('collapsed');
+  const toggle = section.querySelector('.relation-section-toggle');
+  if (toggle) toggle.textContent = section.classList.contains('collapsed') ? '▶' : '▼';
+}
+
+// ============== 关系推导函数 ==============
+//
+// 依据 parent_child 关系图推导 7 大类的具体人物条目。
+
+function inferParentRoleLabel(rel, gender) {
+  if (rel.role_label) return rel.role_label;
+  const r = rel.relationship_type || 'biological';
+  if (gender === 'male') {
+    if (r === 'adopted') return 'adoptive_father';
+    if (r === 'guoji') return 'sworn_father';
+    return 'father';
+  }
+  if (r === 'adopted') return 'adoptive_mother';
+  if (r === 'guoji') return 'sworn_mother';
+  return 'mother';
+}
+function inferChildRoleLabel(rel, gender) {
+  if (rel.role_label) return rel.role_label;
+  const r = rel.relationship_type || 'biological';
+  if (gender === 'male') {
+    if (r === 'adopted') return 'adoptive_son';
+    if (r === 'guoji') return 'sworn_son';
+    return 'son';
+  }
+  if (r === 'adopted') return 'adoptive_daughter';
+  if (r === 'guoji') return 'sworn_daughter';
+  return 'daughter';
+}
+
+const PARENT_ROLE_SHORT = {
+  father: '父亲', birth_father: '生父', adoptive_father: '养父', sworn_father: '义父',
+  mother: '母亲', birth_mother: '生母', adoptive_mother: '养母', sworn_mother: '义母'
+};
+const CHILD_ROLE_SHORT = {
+  son: '子', adoptive_son: '养子', sworn_son: '义子',
+  daughter: '女', adoptive_daughter: '养女', sworn_daughter: '义女'
+};
+const ROLE_DOT = {
+  father: 'dot-main', birth_father: 'dot-birth', adoptive_father: 'dot-adoptive', sworn_father: 'dot-sworn',
+  mother: 'dot-main', birth_mother: 'dot-birth', adoptive_mother: 'dot-adoptive', sworn_mother: 'dot-sworn',
+  son: 'dot-main', adoptive_son: 'dot-adoptive', sworn_son: 'dot-sworn',
+  daughter: 'dot-main', adoptive_daughter: 'dot-adoptive', sworn_daughter: 'dot-sworn',
+  // 长辈
+  uncle_older: 'dot-elder', uncle_younger: 'dot-elder',
+  aunt_paternal: 'dot-elder', aunt_maternal: 'dot-elder',
+  // 手足
+  sibling_full: 'dot-sibling', sibling_half: 'dot-sibling-half',
+  sibling_cousin_paternal: 'dot-sibling', sibling_cousin_maternal: 'dot-sibling',
+  // 后院
+  spouse_primary: 'dot-spouse', spouse_concubine: 'dot-spouse-conc', spouse_equal: 'dot-spouse-equal', spouse_husband: 'dot-spouse',
+  // 侄甥
+  nephew_paternal: 'dot-nephew', niece_paternal: 'dot-nephew',
+  nephew_maternal: 'dot-nephew', niece_maternal: 'dot-nephew',
+  // 孙辈
+  grandson: 'dot-grandchild', granddaughter: 'dot-grandchild'
+};
+
+// 取主父/主母（按 role_label 优先；缺失则取首一个同性别父）
+function pickPrincipalParent(parents, gender, preferRole) {
+  const sameGender = parents.filter(p => p.gender === gender);
+  if (!sameGender.length) return null;
+  const preferred = sameGender.find(p => (p.role_label || inferParentRoleLabel(p, gender)) === preferRole);
+  return preferred || sameGender[0];
+}
+
+// 祖辈：根据主父 / 主母各向上追溯一层
+function deriveGrandparents(principalParent, allRelations, characterById) {
+  if (!principalParent) return [];
+  const out = [];
+  for (const rel of allRelations) {
+    if (rel.child_id !== principalParent.id) continue;
+    const gp = characterById.get(rel.parent_id);
+    if (!gp) continue;
+    out.push({ char: gp, rel });
+  }
+  return out;
+}
+
+// 父之兄弟（伯/叔）、父之姐妹（姑）、母之兄弟（舅）、母之姐妹（姨）
+function deriveElders(principalFather, principalMother, allRelations, characterById) {
+  const out = [];
+  const addSiblingsOf = (parentId, classify, excludeId) => {
+    if (!parentId) return;
+    // 通过 parent_child 找"同祖父/祖母"的其他人
+    // 先找出 parent 的 角色（grandparents），再找他们的其他子女
+    const grandparents = allRelations.filter(r => r.child_id === parentId);
+    const gpIds = grandparents.map(r => r.parent_id);
+    const sibs = allRelations.filter(r =>
+      gpIds.includes(r.parent_id) && r.child_id !== parentId && r.child_id !== excludeId
+    );
+    const seen = new Set();
+    for (const rel of sibs) {
+      const sib = characterById.get(rel.child_id);
+      if (!sib || seen.has(sib.id)) continue;
+      seen.add(sib.id);
+      out.push(classify(sib, rel));
+    }
+  };
+  // 父之兄弟：祖父/祖母的其他儿子 → 伯/叔
+  addSiblingsOf(principalFather && principalFather.id, (sib, rel) => {
+    const label = sib.gender === 'male' ? (isOlderThan(sib, principalFather, allRelations) ? '伯父' : '叔父') : '姑母';
+    return { id: sib.id, name: sib.name, gender: sib.gender, role: 'elder_paternal', roleLabel: label, rel };
+  });
+  // 母之兄弟：外祖父/外祖母的其他儿子 → 舅
+  // 母之姐妹：外祖父/外祖母的其他女儿 → 姨
+  addSiblingsOf(principalMother && principalMother.id, (sib, rel) => {
+    const label = sib.gender === 'male' ? '舅父' : '姨母';
+    return { id: sib.id, name: sib.name, gender: sib.gender, role: 'elder_maternal', roleLabel: label, rel };
+  });
+  return out;
+}
+
+// 比较两人出生先后（无 birth_date 时按 role_label/created_at 兜底）
+function isOlderThan(a, b, allRelations) {
+  const ad = (a && a.birth_date) || '';
+  const bd = (b && b.birth_date) || '';
+  if (ad && bd) return ad < bd;
+  if (ad && !bd) return true;
+  if (!ad && bd) return false;
+  // 都没有：用 created_at
+  return ((a && a.created_at) || '') < ((b && b.created_at) || '');
+}
+
+// 手足分类：嫡（共享父+母）/ 庶（同父异母或仅母）/ 堂（仅同祖父）/ 表（同外祖父或父之姐妹/母之同辈之子）
+function classifySiblings(siblingIds, characterId, principalFather, principalMother, allRelations, characterById) {
+  const out = { full: [], half: [], paternal_cousin: [], maternal_cousin: [] };
+  // 自己的父/母节点
+  const myParentIds = new Set(allRelations.filter(r => r.child_id === characterId).map(r => r.parent_id));
+  // 自己的祖父节点（父之父、母之父）
+  const myGPIds = new Set();
+  for (const pid of myParentIds) {
+    for (const rel of allRelations) {
+      if (rel.child_id === pid) myGPIds.add(rel.parent_id);
+    }
+  }
+  for (const sid of siblingIds) {
+    const sib = characterById.get(sid);
+    if (!sib) continue;
+    const sibParentIds = new Set(allRelations.filter(r => r.child_id === sid).map(r => r.parent_id));
+    const sharedParents = [...myParentIds].filter(p => sibParentIds.has(p));
+    const sibGPIds = new Set();
+    for (const pid of sibParentIds) {
+      for (const rel of allRelations) {
+        if (rel.child_id === pid) sibGPIds.add(rel.parent_id);
+      }
+    }
+    const sharedGPs = [...myGPIds].filter(g => sibGPIds.has(g));
+    let category = 'half';
+    if (sharedParents.length >= 2) category = 'full';
+    else if (sharedGPs.length === 0) category = 'maternal_cousin';
+    else if (sharedGPs.length === 1) {
+      // 看共享祖父是父之父（堂）还是母之父（表）
+      const fatherParentIds = principalFather
+        ? allRelations.filter(r => r.child_id === principalFather.id).map(r => r.parent_id)
+        : [];
+      if (fatherParentIds.some(g => sharedGPs.includes(g))) category = 'paternal_cousin';
+      else category = 'maternal_cousin';
+    }
+    const label = siblingRoleLabel(category, sib.gender);
+    out[category].push({ id: sib.id, name: sib.name, gender: sib.gender, role: 'sibling', roleLabel: label, category });
+  }
+  return out;
+}
+
+function siblingRoleLabel(category, gender) {
+  if (gender === 'male') {
+    if (category === 'full') return '嫡兄/弟';
+    if (category === 'half') return '庶兄/弟';
+    if (category === 'paternal_cousin') return '堂兄/弟';
+    return '表兄/弟';
+  }
+  if (category === 'full') return '嫡姐/妹';
+  if (category === 'half') return '庶姐/妹';
+  if (category === 'paternal_cousin') return '堂姐/妹';
+  return '表姐/妹';
+}
+
+// 子辈细分：自己亲/养/义子女 + 兄弟之子女（侄/甥）
+function deriveChildren(charId, relations, siblings, allRelations, characterById) {
+  const out = [];
+  // 1) 亲子女
+  for (const child of relations.children) {
+    const labelKey = inferChildRoleLabel(child, child.gender);
+    out.push({
+      id: child.id, name: child.name, gender: child.gender,
+      role: child.gender === 'male' ? 'son' : 'daughter',
+      roleLabel: CHILD_ROLE_SHORT[labelKey] || (child.gender === 'male' ? '子' : '女'),
+      dot: ROLE_DOT[labelKey] || 'dot-main',
+      deleteAction: `deleteParentChild('${child.pc_id}')`
+    });
+  }
+  // 2) 兄弟之子女 → 侄（兄弟之子）/ 甥（姐妹之子）；女版：侄女/甥女
+  for (const sib of siblings) {
+    const sibChildRels = allRelations.filter(r => r.parent_id === sib.id);
+    for (const rel of sibChildRels) {
+      const n = characterById.get(rel.child_id);
+      if (!n) continue;
+      const isBrothersChild = sib.gender === 'male';
+      if (n.gender === 'male') {
+        out.push({ id: n.id, name: n.name, gender: n.gender, role: 'nephew', roleLabel: isBrothersChild ? '侄' : '甥', dot: 'dot-nephew' });
+      } else {
+        out.push({ id: n.id, name: n.name, gender: n.gender, role: 'niece', roleLabel: isBrothersChild ? '侄女' : '甥女', dot: 'dot-nephew' });
+      }
+    }
+  }
+  return out;
+}
+
+// 后院（妻妾 / 夫）：从 marriages 表
+function buildHarem(charId, charMarriages, characterById) {
+  return charMarriages.map(m => {
+    const isA = m.character_a_id === charId;
+    const otherId = isA ? m.character_b_id : m.character_a_id;
+    const otherName = isA ? m.character_b_name : m.character_a_name;
+    const otherChar = characterById.get(otherId);
+    const otherGender = otherChar ? otherChar.gender : null;
+    let label = '配偶';
+    let dot = 'dot-spouse';
+    const kind = m.marriage_kind || 'primary';
+    if (otherGender === 'female') {
+      label = kind === 'concubine' ? '妾' : (kind === 'equal' ? '平妻' : '妻');
+      dot = kind === 'concubine' ? 'dot-spouse-conc' : (kind === 'equal' ? 'dot-spouse-equal' : 'dot-spouse');
+    } else if (otherGender === 'male') {
+      label = '夫';
+      dot = 'dot-spouse';
+    }
+    return { id: otherId, name: otherName, gender: otherGender, role: 'spouse', roleLabel: label, dot, deleteAction: `deleteMarriage('${m.id}')` };
+  });
+}
+
+// 孙辈：所有子女之子女
+function deriveGrandchildren(childRelations, allRelations, characterById) {
+  const out = [];
+  const seen = new Set();
+  for (const child of childRelations.children || []) {
+    const gcRels = allRelations.filter(r => r.parent_id === child.id);
+    for (const g of gcRels) {
+      const gc = characterById.get(g.child_id);
+      if (!gc || seen.has(gc.id)) continue;
+      seen.add(gc.id);
+      const label = gc.gender === 'male' ? '孙' : '孙女';
+      out.push({ id: gc.id, name: gc.name, gender: gc.gender, role: gc.gender === 'male' ? 'grandson' : 'granddaughter', roleLabel: label, dot: 'dot-grandchild' });
+    }
+  }
+  return out;
+}
+
+// ===== Character Detail =====
+
 // ===== Character Detail =====
 async function viewCharacterDetail(id) {
   try {
@@ -995,53 +1274,111 @@ async function viewCharacterDetail(id) {
     parentChildRelations = allRelations;
     tagLibrary = tags;
 
-    const characterById = new Map(characters.map(character => [character.id, character]));
+    const characterById = new Map(characters.map(c => [c.id, c]));
+
+    // ===== 收集基础数据 =====
+    const fathers  = relations.parents.filter(p => p.gender === 'male');
+    const mothers  = relations.parents.filter(p => p.gender === 'female');
+    const principalFather = pickPrincipalParent(fathers, 'male', 'father');
+    const principalMother = pickPrincipalParent(mothers, 'female', 'mother');
     const siblingIds = getSiblingIds(id, parentChildRelations);
-    const siblings = [...siblingIds].map(siblingId => characterById.get(siblingId)).filter(Boolean);
-    const fathers = relations.parents.filter(parent => parent.gender === 'male');
-    const mothers = relations.parents.filter(parent => parent.gender === 'female');
-    const brothers = siblings.filter(sibling => sibling.gender === 'male');
-    const sisters = siblings.filter(sibling => sibling.gender === 'female');
-    const sons = relations.children.filter(child => child.gender === 'male');
-    const daughters = relations.children.filter(child => child.gender === 'female');
-    const relationItem = relation => ({
-      id: relation.id,
-      name: relation.name,
-      className: getRelationBirthClass(relation.birth_status),
-      type: `${getRelationTypeLabel(relation.relationship_type)}${getBirthStatusLabel(relation.birth_status)}`,
-      deleteAction: `deleteParentChild('${relation.pc_id}')`
+    const siblings = [...siblingIds].map(sid => characterById.get(sid)).filter(Boolean);
+
+    // ===== 祖辈 =====
+    const fatherGP = deriveGrandparents(principalFather, parentChildRelations, characterById);
+    const motherGP = deriveGrandparents(principalMother, parentChildRelations, characterById);
+    const gpToLine = (gp, roleLabel) => ({
+      id: gp.char.id, name: gp.char.name, gender: gp.char.gender,
+      role: 'grandparent', roleLabel, dot: 'dot-grandparent',
+      genderLabel: getGenderLabel(gp.char.gender),
+      deleteAction: `deleteParentChild('${gp.rel.id}')`
     });
-    const siblingItem = sibling => ({
-      id: sibling.id,
-      name: sibling.name,
-      deleteAction: `removeSiblingRelation('${id}', '${sibling.id}')`
-    });
-    const marriageItem = marriage => {
-      const isCharacterA = marriage.character_a_id === id;
+    const ancestorLines = [
+      ...fatherGP.filter(g => g.char.gender === 'male').map(g => gpToLine(g, '祖父')),
+      ...fatherGP.filter(g => g.char.gender === 'female').map(g => gpToLine(g, '祖母')),
+      ...motherGP.filter(g => g.char.gender === 'male').map(g => gpToLine(g, '外祖父')),
+      ...motherGP.filter(g => g.char.gender === 'female').map(g => gpToLine(g, '外祖母'))
+    ];
+
+    // ===== 父母 =====
+    const parentToLine = p => {
+      const roleKey = inferParentRoleLabel(p, p.gender);
       return {
-        id: isCharacterA ? marriage.character_b_id : marriage.character_a_id,
-        name: isCharacterA ? marriage.character_b_name : marriage.character_a_name,
-        className: getRelationMarriageClass(marriage.marriage_kind),
-        type: `${getMarriageTypeLabel(marriage.relationship_type)}${getMarriageKindLabel(marriage.marriage_kind)}`,
-        deleteAction: `deleteMarriage('${marriage.id}')`
+        id: p.id, name: p.name, gender: p.gender,
+        role: roleKey, roleLabel: PARENT_ROLE_SHORT[roleKey] || (p.gender === 'male' ? '父辈' : '母辈'),
+        dot: ROLE_DOT[roleKey] || 'dot-default',
+        genderLabel: getGenderLabel(p.gender),
+        deleteAction: `deleteParentChild('${p.pc_id}')`
       };
     };
-    const detailRelationRows = [
-      renderDetailRelationRow('父亲', fathers.map(relationItem), `openDetailRelationModal('${id}', 'father')`),
-      renderDetailRelationRow('母亲', mothers.map(relationItem), `openDetailRelationModal('${id}', 'mother')`),
-      renderDetailRelationRow('配偶', charMarriages.map(marriageItem), `openMarriageModal('${id}')`),
-      renderDetailRelationRow('兄弟', brothers.map(siblingItem), `openDetailRelationModal('${id}', 'brother')`),
-      renderDetailRelationRow('姐妹', sisters.map(siblingItem), `openDetailRelationModal('${id}', 'sister')`),
-      renderDetailRelationRow('子', sons.map(relationItem), `openDetailRelationModal('${id}', 'son')`),
-      renderDetailRelationRow('女', daughters.map(relationItem), `openDetailRelationModal('${id}', 'daughter')`)
-    ].join('');
-    
+    // 按 father → birth_father → adoptive_father → sworn_father → mother → ... 顺序
+    const parentOrder = ['father', 'birth_father', 'adoptive_father', 'sworn_father',
+                         'mother', 'birth_mother', 'adoptive_mother', 'sworn_mother'];
+    const parentItems = [...fathers, ...mothers]
+      .map(parentToLine)
+      .sort((a, b) => parentOrder.indexOf(a.role) - parentOrder.indexOf(b.role));
+
+    // ===== 长辈 =====
+    const elderItems = deriveElders(principalFather, principalMother, parentChildRelations, characterById)
+      .map(e => ({
+        id: e.id, name: e.name, gender: e.gender,
+        role: e.role, roleLabel: e.roleLabel,
+        dot: 'dot-elder',
+        genderLabel: getGenderLabel(e.gender),
+        deleteAction: `deleteParentChild('${e.rel.id}')`
+      }));
+
+    // ===== 后院 =====
+    const haremItems = buildHarem(id, charMarriages, characterById)
+      .map(h => ({
+        ...h, genderLabel: getGenderLabel(h.gender)
+      }));
+
+    // ===== 手足（分类） =====
+    const sibGroups = classifySiblings(siblingIds, id, principalFather, principalMother, parentChildRelations, characterById);
+    const sibToLine = s => ({
+      id: s.id, name: s.name, gender: s.gender,
+      role: 'sibling', roleLabel: s.roleLabel,
+      dot: s.category === 'half' ? 'dot-sibling-half' : 'dot-sibling',
+      genderLabel: getGenderLabel(s.gender),
+      deleteAction: `removeSiblingRelation('${id}', '${s.id}')`
+    });
+    const siblingItems = [
+      ...sibGroups.full.map(sibToLine),
+      ...sibGroups.half.map(sibToLine),
+      ...sibGroups.paternal_cousin.map(sibToLine),
+      ...sibGroups.maternal_cousin.map(sibToLine)
+    ];
+
+    // ===== 子辈（含侄/甥） =====
+    const childrenItems = deriveChildren(id, relations, siblings, parentChildRelations, characterById)
+      .map(c => ({ ...c, genderLabel: getGenderLabel(c.gender) }));
+
+    // ===== 孙辈 =====
+    const grandchildrenItems = deriveGrandchildren(relations, parentChildRelations, characterById)
+      .map(g => ({ ...g, genderLabel: getGenderLabel(g.gender) }));
+
+    // ===== 拼接 7 大类 section =====
+    const sections = [
+      { key: 'grandparents', label: '祖辈', items: ancestorLines },
+      { key: 'parents',      label: '父母', items: parentItems,
+        addAction: `openDetailRelationModal('${id}', 'parent')` },
+      { key: 'elders',       label: '长辈', items: elderItems },
+      { key: 'harem',        label: '后院', items: haremItems,
+        addAction: `openMarriageModal('${id}')` },
+      { key: 'siblings',     label: '手足', items: siblingItems },
+      { key: 'juniors',      label: '子辈', items: childrenItems,
+        addAction: `openDetailRelationModal('${id}', 'child')` },
+      { key: 'grandchildren', label: '孙辈', items: grandchildrenItems }
+    ];
+    const sectionsHtml = sections.map(s => renderRelationSection(s.key, s.label, s.items, s.addAction)).join('');
+
     currentCharacterId = id;
     currentCharacter = char;
     currentCharacterTags = parseCharacterTags(char);
-    
+
     document.getElementById('character-detail-title').textContent = char.name;
-    
+
     const content = document.getElementById('character-detail-content');
     content.innerHTML = `
       <div class="character-info">
@@ -1098,12 +1435,12 @@ async function viewCharacterDetail(id) {
         <div class="character-tags-list" id="character-detail-tags"></div>
         <div class="character-tag-picker" id="character-tag-picker"></div>
       </div>
-      
+
       <div class="character-relations">
         <div class="detail-relation-panel">
-          ${detailRelationRows}
+          ${sectionsHtml}
         </div>
-        
+
         <h4>宿命羁绊</h4>
         <div class="relation-list">
           ${bonds.map(b => {
@@ -1135,7 +1472,7 @@ async function viewCharacterDetail(id) {
         </div>
       </div>
     `;
-    
+
     renderCharacterDetailTags();
     document.getElementById('character-detail-modal').classList.add('active');
   } catch (e) {
@@ -1374,6 +1711,47 @@ function getBirthStatusLabel(status) {
   return status ? ' · ' + (labels[status] || '') : '';
 }
 
+// 称谓（role_label）→ 中文标签
+const ROLE_LABELS = {
+  // 父辈
+  father: '父亲',
+  birth_father: '生父',
+  adoptive_father: '养父',
+  sworn_father: '义父',
+  mother: '母亲',
+  birth_mother: '生母',
+  adoptive_mother: '养母',
+  sworn_mother: '义母',
+  // 子辈
+  son: '子',
+  adoptive_son: '养子',
+  sworn_son: '义子',
+  daughter: '女',
+  adoptive_daughter: '养女',
+  sworn_daughter: '义女'
+};
+function getRoleLabelText(role) {
+  return ROLE_LABELS[role] || '';
+}
+
+// 称谓 → CSS class（用于人名背景色 / 边框色区分）
+function getRelationRoleClass(roleLabel, _relationshipType, _birthStatus, _gender) {
+  if (roleLabel && ROLE_LABELS[roleLabel]) {
+    if (['father', 'mother'].includes(roleLabel)) return 'relation-parent-main';
+    if (['birth_father', 'birth_mother'].includes(roleLabel)) return 'relation-parent-birth';
+    if (['adoptive_father', 'adoptive_mother'].includes(roleLabel)) return 'relation-parent-adoptive';
+    if (['sworn_father', 'sworn_mother'].includes(roleLabel)) return 'relation-parent-sworn';
+    if (['son', 'daughter'].includes(roleLabel)) return 'relation-child-main';
+    if (['adoptive_son', 'adoptive_daughter'].includes(roleLabel)) return 'relation-child-adoptive';
+    if (['sworn_son', 'sworn_daughter'].includes(roleLabel)) return 'relation-child-sworn';
+  }
+  return '';
+}
+
+function getSiblingRelationTitle(_characterId, _siblingId) {
+  return '手足';
+}
+
 function getRelationBirthClass(status) {
   const map = {
     legitimate: 'relation-prime',
@@ -1478,27 +1856,46 @@ async function removeSiblingRelation(characterId, siblingId) {
   }
 }
 const DETAIL_RELATION_CONFIG = {
-  father: { label: '父亲', gender: 'male', mode: 'parent', defaultBirthStatus: 'legitimate' },
-  mother: { label: '母亲', gender: 'female', mode: 'parent', defaultBirthStatus: 'legitimate' },
+  father: { label: '父亲', gender: 'male', mode: 'parent', defaultBirthStatus: 'legitimate', role: 'father' },
+  mother: { label: '母亲', gender: 'female', mode: 'parent', defaultBirthStatus: 'legitimate', role: 'mother' },
   brother: { label: '兄弟', gender: 'male', mode: 'sibling' },
   sister: { label: '姐妹', gender: 'female', mode: 'sibling' },
-  son: { label: '子', gender: 'male', mode: 'child', defaultBirthStatus: 'legitimate' },
-  daughter: { label: '女', gender: 'female', mode: 'child', defaultBirthStatus: 'legitimate' }
+  son: { label: '子', gender: 'male', mode: 'child', defaultBirthStatus: 'legitimate', role: 'son' },
+  daughter: { label: '女', gender: 'female', mode: 'child', defaultBirthStatus: 'legitimate', role: 'daughter' }
 };
 
-function getSelectedDetailRelationIds(characterId, kind) {
+function getSelectedDetailRelationIds(characterId, kind, role) {
   const config = DETAIL_RELATION_CONFIG[kind];
   if (!config) return new Set();
   if (config.mode === 'sibling') {
     return new Set(getSiblingIds(characterId, parentChildRelations));
   }
   return new Set(parentChildRelations
-    .filter(relation => config.mode === 'parent'
-      ? relation.child_id === characterId
-      : relation.parent_id === characterId)
+    .filter(relation => {
+      if (config.mode === 'parent'
+        ? relation.child_id !== characterId
+        : relation.parent_id !== characterId) return false;
+      // 如果指定了 role，则只过滤该 role；否则取全部同模式
+      if (role) {
+        const inferred = relation.role_label
+          || (config.mode === 'parent'
+            ? (relation.relationship_type === 'adopted'
+              ? (config.gender === 'male' ? 'adoptive_father' : 'adoptive_mother')
+              : relation.relationship_type === 'guoji'
+                ? (config.gender === 'male' ? 'sworn_father' : 'sworn_mother')
+                : (config.gender === 'male' ? 'father' : 'mother'))
+            : (relation.relationship_type === 'adopted'
+              ? (config.gender === 'male' ? 'adoptive_son' : 'adoptive_daughter')
+              : relation.relationship_type === 'guoji'
+                ? (config.gender === 'male' ? 'sworn_son' : 'sworn_daughter')
+                : (config.gender === 'male' ? 'son' : 'daughter')));
+        return inferred === role;
+      }
+      return true;
+    })
     .map(relation => config.mode === 'parent' ? relation.parent_id : relation.child_id));
 }
-async function openDetailRelationModal(characterId, kind) {
+async function openDetailRelationModal(characterId, kind, role) {
   const config = DETAIL_RELATION_CONFIG[kind];
   if (!config) return;
   const [allCharacters, allRelations] = await Promise.all([
@@ -1507,7 +1904,7 @@ async function openDetailRelationModal(characterId, kind) {
   ]);
   characters = allCharacters;
   parentChildRelations = allRelations;
-  detailRelationContext = { characterId, kind, config };
+  detailRelationContext = { characterId, kind, config, role: role || config.role };
   const input = document.getElementById('detail-relation-candidate');
   const hidden = document.getElementById('detail-relation-candidate-id');
   if (input) {
@@ -1516,7 +1913,8 @@ async function openDetailRelationModal(characterId, kind) {
   }
   if (hidden) hidden.value = '';
   refreshDetailRelationDatalist();
-  document.getElementById('detail-relation-modal-title').textContent = `添加${config.label}`;
+  const titleLabel = role ? getRoleLabelText(role) : config.label;
+  document.getElementById('detail-relation-modal-title').textContent = `添加${titleLabel}`;
   const hint = document.getElementById('detail-relation-hint');
   if (hint) {
     hint.textContent = detailRelationCandidates.length
@@ -1525,8 +1923,26 @@ async function openDetailRelationModal(characterId, kind) {
         : `按姓名输入匹配；仅${config.gender === 'male' ? '男性' : '女性'}可选，已添加人物不会重复出现。`)
       : '当前没有可选人物，可点击 ＋ 直接新建。';
   }
-  document.getElementById('detail-relation-options').style.display = config.mode === 'sibling' ? 'none' : '';
-  document.getElementById('detail-relation-type').value = 'biological';
+  const optionsPanel = document.getElementById('detail-relation-options');
+  const roleGroup = document.getElementById('detail-relation-role-group');
+  const birthGroup = document.getElementById('detail-relation-birth-status-group');
+  if (optionsPanel) optionsPanel.style.display = config.mode === 'sibling' ? 'none' : '';
+  // 称谓下拉：只显示与 kind 匹配的选项
+  const roleSelect = document.getElementById('detail-relation-role');
+  if (roleSelect) {
+      const wanted = config.mode === 'parent'
+        ? (config.gender === 'male'
+          ? ['father', 'birth_father', 'adoptive_father', 'sworn_father']
+          : ['mother', 'birth_mother', 'adoptive_mother', 'sworn_mother'])
+        : (config.gender === 'male'
+          ? ['son', 'adoptive_son', 'sworn_son']
+          : ['daughter', 'adoptive_daughter', 'sworn_daughter']);
+      roleSelect.innerHTML = wanted.map(r => `<option value="${r}">${getRoleLabelText(r)}</option>`).join('');
+      roleSelect.value = role || config.role;
+      if (roleGroup) roleGroup.style.display = '';
+    }
+  if (birthGroup) birthGroup.style.display = config.mode === 'child' ? '' : 'none';
+  document.getElementById('detail-relation-type').value = (role && role.startsWith('adoptive_')) ? 'adopted' : (role && role.startsWith('sworn_')) ? 'guoji' : 'biological';
   document.getElementById('detail-relation-birth-status').value = config.defaultBirthStatus || 'legitimate';
   document.getElementById('detail-relation-modal').classList.add('active');
 }
@@ -1539,7 +1955,8 @@ function closeDetailRelationModal() {
 function buildDetailRelationCandidates(characterId, kind, allCharacters, allRelations) {
   const config = DETAIL_RELATION_CONFIG[kind];
   if (!config) return [];
-  const selectedIds = getSelectedDetailRelationIds(characterId, kind);
+  const role = detailRelationContext ? detailRelationContext.role : null;
+  const selectedIds = getSelectedDetailRelationIds(characterId, kind, role);
   const directRelativeIds = new Set(allRelations.flatMap(relation => {
     if (relation.child_id === characterId) return [relation.parent_id];
     if (relation.parent_id === characterId) return [relation.child_id];
@@ -1609,9 +2026,12 @@ async function saveDetailRelation(event) {
     showToast('请选择人物', 'error');
     return;
   }
-  const { characterId, config } = detailRelationContext;
+  const { characterId, config, role } = detailRelationContext;
   const relationshipType = document.getElementById('detail-relation-type').value;
   const birthStatus = document.getElementById('detail-relation-birth-status').value;
+  // 称谓从下拉框读取（用户可改），缺省回退到 context.role
+  const roleSelect = document.getElementById('detail-relation-role');
+  const chosenRole = (roleSelect && roleSelect.value) ? roleSelect.value : (role || null);
   try {
     if (config.mode === 'sibling') {
       const parentRelations = parentChildRelations.filter(relation => relation.child_id === characterId);
@@ -1627,6 +2047,7 @@ async function saveDetailRelation(event) {
           child_id: selectedId,
           relationship_type: relation.relationship_type || 'biological',
           birth_status: relation.birth_status || 'legitimate',
+          role_label: relation.role_label || null,
           notes: null
         }));
       if (!requests.length) {
@@ -1640,13 +2061,15 @@ async function saveDetailRelation(event) {
         child_id: config.mode === 'parent' ? characterId : selectedId,
         relationship_type: relationshipType,
         birth_status: birthStatus,
+        role_label: chosenRole,
         notes: null
       });
     }
     closeDetailRelationModal();
     await loadCharacters();
     await viewCharacterDetail(characterId);
-    showToast(`${config.label}已添加`);
+    const titleLabel = chosenRole ? getRoleLabelText(chosenRole) : config.label;
+    showToast(`${titleLabel}已添加`);
   } catch (error) {
     showToast('保存关系失败: ' + error.message, 'error');
   }
