@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>家族树管理工具</title>
+  <link rel="stylesheet" href="style.css?v=20260828-2">
+</head>
+<body>
+  <div id="app">
+    <nav class="sidebar">
+      <div class="sidebar-header">
+        <h1>家族树</h1>
+      </div>
+      <ul class="nav-menu">
+        <li class="nav-item active" data-view="dashboard">
+          <span class="nav-icon">册</span>
+          <span class="nav-text">首页</span>
+        </li>
+        <li class="nav-item" data-view="families">
+          <span class="nav-icon">族</span>
+          <span class="nav-text">家族管理</span>
+        </li>
+        <li class="nav-item" data-view="characters">
+          <span class="nav-icon">人</span>
+          <span class="nav-text">角色管理</span>
+        </li>
+        <li class="nav-item" data-view="memories">
+          <span class="nav-icon">记</span>
+          <span class="nav-text">记事一览</span>
+        </li>
+        <li class="nav-item" data-view="settings">
+          <span class="nav-icon">设</span>
+          <span class="nav-text">设置</span>
+        </li>
+      </ul>
+    </nav>
+
+    <main class="main-content">
+      <!-- Dashboard -->
+      <section id="view-dashboard" class="view active">
+        <div class="view-header">
+          <h2>篇章</h2>
+          <button class="btn btn-primary" onclick="openChapterModal()">开启新篇章</button>
+        </div>
+        <div class="chapter-list" id="chapter-list">
+          <div class="loading">正在加载篇章</div>
+        </div>
+      </section>
+
+      <!-- Families -->
+      <section id="view-families" class="view">
+        <div class="view-header">
+          <h2>家族管理</h2>
+          <button class="btn btn-primary" onclick="openFamilyModal()">新建家族</button>
+        </div>
+        <div class="search-bar">
+          <input type="text" id="family-search" placeholder="搜索家族..." oninput="filterFamilies()">
+        </div>
+        <div class="data-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>家族名称</th>
+                <th>成员数量</th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="families-list">
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Characters -->
+      <section id="view-characters" class="view">
+        <div class="view-header">
+          <h2>角色管理</h2>
+          <button class="btn btn-primary" onclick="openCharacterModal()">新建角色</button>
+        </div>
+        <div class="search-bar">
+          <input type="text" id="character-search" placeholder="搜索角色..." oninput="filterCharacters()">
+          <select id="character-family-filter" onchange="filterCharacters()">
+            <option value="">所有家族</option>
+          </select>
+          <select id="character-occupation-filter" onchange="filterCharacters()">
+            <option value="">全部职业</option>
+          </select>
+          <select id="character-alive-filter" onchange="filterCharacters()">
+            <option value="">全部状态</option>
+            <option value="alive">在世</option>
+            <option value="deceased">去世</option>
+          </select>
+          <select id="character-marital-filter" onchange="filterCharacters()">
+            <option value="">全部婚姻状态</option>
+            <option value="married">已婚</option>
+            <option value="unmarried">未婚</option>
+          </select>
+        </div>
+        <div class="data-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>头像</th>
+                <th>姓名</th>
+                <th>性别</th>
+                <th>爵位</th>
+                <th class="sortable" onclick="sortCharacters('family')">家族 <span id="sort-family-indicator"></span></th>
+                <th class="sortable" onclick="sortCharacters('birth')">出生年份 <span id="sort-birth-indicator"></span></th>
+                <th>配偶</th>
+                <th>婚姻状态</th>
+                <th>子女</th>
+                <th>是否去世</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="characters-list">
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" id="character-pagination"></div>
+      </section>
+
+      <!-- Tree -->
+      <section id="view-tree" class="view">
+        <div class="view-header">
+          <h2>族谱查看</h2>
+          <div class="tree-controls">
+            <select id="tree-family-select" onchange="loadFamilyTree()">
+              <option value="">所有家族</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="openTreeCharacterModal()">添加角色</button>
+            <div class="zoom-controls">
+              <button class="btn btn-sm btn-secondary" onclick="zoomTree(-0.2)" title="缩小">−</button>
+              <span id="zoom-level">100%</span>
+              <button class="btn btn-sm btn-secondary" onclick="zoomTree(0.2)" title="放大">+</button>
+              <button class="btn btn-sm btn-secondary" onclick="resetTreeZoom()" title="还原">还原</button>
+            </div>
+          </div>
+        </div>
+        <div class="tree-viewport" id="tree-viewport">
+          <div class="tree-canvas" id="tree-canvas">
+            <div class="tree-placeholder">
+              <p>请选择一个家族来查看族谱</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Memories (记事一览) -->
+      <section id="view-memories" class="view">
+        <div class="view-header">
+          <h2>记事一览</h2>
+          <div class="view-header-actions">
+            <button class="btn btn-secondary btn-sm" onclick="openMemoryCategoryManager()">分类管理</button>
+            <button class="btn btn-primary" onclick="openLifeEventModal()">＋ 新建记事</button>
+          </div>
+        </div>
+        <div class="search-bar memory-toolbar">
+          <input type="text" id="memory-search" placeholder="搜索时间、正文、人物..." oninput="onMemoryFilterChange()">
+          <select id="memory-category-filter" onchange="onMemoryFilterChange()">
+            <option value="">全部分类</option>
+          </select>
+          <select id="memory-sort" onchange="onMemoryFilterChange()">
+            <option value="event_date_desc">时间 ↓</option>
+            <option value="event_date_asc">时间 ↑</option>
+            <option value="category_asc">分类 ↑</option>
+            <option value="category_desc">分类 ↓</option>
+            <option value="created_at_desc">创建 ↓</option>
+            <option value="created_at_asc">创建 ↑</option>
+          </select>
+          <span class="memory-count" id="memory-count"></span>
+        </div>
+        <div class="data-table-container">
+          <table class="data-table memory-table">
+            <thead>
+              <tr>
+                <th class="sortable" onclick="toggleMemorySort('event_date')">时间 <span id="memory-sort-indicator"></span></th>
+                <th>正文</th>
+                <th>主角色</th>
+                <th>相关人物</th>
+                <th class="sortable" onclick="toggleMemorySort('category')">分类 <span id="memory-category-sort-indicator"></span></th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="memory-list">
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" id="memory-pagination"></div>
+      </section>
+
+      <!-- Settings -->
+      <section id="view-settings" class="view">
+        <div class="view-header">
+          <h2>设置</h2>
+        </div>
+        <div class="settings-section">
+          <h3>数据库设置</h3>
+          <div class="setting-item">
+            <label>当前数据库路径:</label>
+            <div class="setting-value">
+              <input type="text" id="db-path" readonly>
+              <button class="btn btn-secondary" onclick="changeDbPath()">更改路径</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>纪年设置</h3>
+          <div class="setting-item">
+            <label>当前年号/朝代</label>
+            <div class="setting-value">
+              <input type="text" id="era-name" placeholder="如：贞观、天启、大梁">
+              <button class="btn btn-secondary" onclick="saveEraName()">保存年号</button>
+            </div>
+            <p class="text-muted mt-2">保存后，角色/婚姻/往事中的年份可直接填写「年号+年份」，例如：贞观三年。</p>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>数据管理</h3>
+          <div class="setting-item">
+            <button class="btn btn-primary" onclick="exportData()">导出备份</button>
+            <button class="btn btn-secondary" onclick="importData()">导入恢复</button>
+            <input type="file" id="import-file" style="display: none" accept=".json" onchange="handleImport(event)">
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Chapter Modal -->
+  <div class="modal" id="chapter-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>开启新篇章</h3>
+        <button class="modal-close" onclick="closeChapterModal()">&times;</button>
+      </div>
+      <form id="chapter-form" onsubmit="saveChapter(event)">
+        <div class="form-group">
+          <label>篇章名称 *</label>
+          <input type="text" id="chapter-name" placeholder="如：女帝的日常·第一世" required>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeChapterModal()">取消</button>
+          <button type="submit" class="btn btn-primary">开启</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Family Modal -->
+  <div class="modal" id="family-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="family-modal-title">新建家族</h3>
+        <button class="modal-close" onclick="closeFamilyModal()">&times;</button>
+      </div>
+      <form id="family-form" onsubmit="saveFamily(event)">
+        <input type="hidden" id="family-id">
+        <div class="form-group">
+          <label>家族名称 *</label>
+          <input type="text" id="family-name" required>
+        </div>
+        <div class="form-group">
+          <label>备注</label>
+          <textarea id="family-notes" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>家族简介</label>
+          <textarea id="family-description" rows="4"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeFamilyModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Character Modal -->
+  <div class="modal" id="character-modal">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="character-modal-title">新建角色</h3>
+        <button class="modal-close" onclick="closeCharacterModal()">&times;</button>
+      </div>
+      <form id="character-form" onsubmit="saveCharacter(event)">
+        <input type="hidden" id="character-id">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>姓名 *</label>
+            <input type="text" id="character-name" required>
+          </div>
+          <div class="form-group">
+            <label>性别</label>
+            <select id="character-gender">
+              <option value="">未指定</option>
+              <option value="male">男</option>
+              <option value="female">女</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>所属家族</label>
+            <div class="family-select-row">
+              <input type="text" id="character-family-input" list="family-datalist" placeholder="输入家族名，可自动匹配或直接新建" autocomplete="off">
+              <datalist id="family-datalist"></datalist>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="openFamilyModalFromCharacter()">+ 详情新建</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>头像编号</label>
+            <input type="number" id="character-avatar" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label>出生年份/纪年</label>
+            <input type="text" id="character-birth" placeholder="如：贞观三年 或 1234">
+          </div>
+          <div class="form-group">
+            <label>死亡年份/纪年</label>
+            <input type="text" id="character-death" placeholder="如：贞观廿年 或 1270">
+          </div>
+          <div class="form-group">
+            <label>出身</label>
+            <input type="text" id="character-origin" list="origin-datalist" placeholder="如：士族、寒门、将门" autocomplete="off">
+            <datalist id="origin-datalist"></datalist>
+          </div>
+          <div class="form-group">
+            <label>爵位</label>
+            <input type="text" id="character-identity">
+          </div>
+          <div class="form-group full-width">
+            <label>职业</label>
+            <div class="occupation-tag-field" id="occupation-tag-field">
+              <div class="occupation-tags" id="occupation-tags"></div>
+              <div class="occupation-input-row">
+                <input type="text" id="character-occupation-input" list="occupation-datalist" placeholder="选择已有职业，或输入后回车/点击添加" autocomplete="off" onfocus="showOccupationOptions()" oninput="loadOccupationOptions(this.value)" onkeydown="handleOccupationInputKeydown(event)">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addOccupationTag()">添加</button>
+              </div>
+              <datalist id="occupation-datalist"></datalist>
+              <div class="occupation-options" id="occupation-options"></div>
+            </div>
+          </div>
+          <div class="form-group full-width">
+            <label>备注</label>
+            <textarea id="character-notes" rows="3"></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeCharacterModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Marriage Modal -->
+  <div class="modal" id="marriage-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>添加配偶关系</h3>
+        <button class="modal-close" onclick="closeMarriageModal()">&times;</button>
+      </div>
+      <form id="marriage-form" onsubmit="saveMarriage(event)">
+        <div class="form-group">
+          <label>角色 A *</label>
+          <div class="select-with-add">
+            <input type="text" id="marriage-a" list="character-datalist" placeholder="输入角色名" autocomplete="off" required>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="openAddCharacterForSelect('marriage-a', 'marriage-modal')">＋</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>角色 B *</label>
+          <div class="select-with-add">
+            <input type="text" id="marriage-b" list="character-datalist" placeholder="输入角色名" autocomplete="off" required>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="openAddCharacterForSelect('marriage-b', 'marriage-modal')">＋</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>关系类型</label>
+          <select id="marriage-type">
+            <option value="spouse">配偶</option>
+            <option value="former_spouse">前配偶</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>妻妾等级</label>
+          <select id="marriage-kind">
+            <option value="primary">正室</option>
+            <option value="equal">平妻</option>
+            <option value="concubine">妾室</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>备注</label>
+          <textarea id="marriage-notes" rows="2"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeMarriageModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Parent-Child Modal -->
+  <div class="modal" id="parent-child-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>添加亲子关系</h3>
+        <button class="modal-close" onclick="closeParentChildModal()">&times;</button>
+      </div>
+      <form id="parent-child-form" onsubmit="saveParentChild(event)">
+        <div class="form-group">
+          <label>父/母 *</label>
+          <div class="select-with-add">
+            <input type="text" id="parent-select" list="character-datalist" placeholder="输入角色名" autocomplete="off" required>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="openAddCharacterForSelect('parent-select', 'parent-child-modal')">＋</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>子女 *</label>
+          <div class="select-with-add">
+            <input type="text" id="child-select" list="character-datalist" placeholder="输入角色名" autocomplete="off" required>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="openAddCharacterForSelect('child-select', 'parent-child-modal')">＋</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>关系类型</label>
+          <select id="parent-child-type">
+            <option value="biological">亲生</option>
+            <option value="adopted">收养</option>
+            <option value="guoji">过继</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>出身</label>
+          <select id="birth-status">
+            <option value="legitimate">嫡出</option>
+            <option value="concubine_born">庶出</option>
+            <option value="illegitimate">私生</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>备注</label>
+          <textarea id="parent-child-notes" rows="2"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeParentChildModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Bond Modal -->
+  <div class="modal" id="bond-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>添加宿命羁绊</h3>
+        <button class="modal-close" onclick="closeBondModal()">&times;</button>
+      </div>
+      <form id="bond-form" onsubmit="saveBond(event)">
+        <div class="form-group">
+          <label>角色 A *</label>
+          <div class="select-with-add">
+            <input type="text" id="bond-a" list="character-datalist" placeholder="输入角色名" autocomplete="off" required>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="openAddCharacterForSelect('bond-a', 'bond-modal')">＋</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>角色 B *</label>
+          <div class="select-with-add">
+            <input type="text" id="bond-b" list="character-datalist" placeholder="输入角色名" autocomplete="off" required>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="openAddCharacterForSelect('bond-b', 'bond-modal')">＋</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>羁绊类型</label>
+          <select id="bond-type" onchange="onBondTypeChange()">
+            <option value="master_disciple">师徒</option>
+            <option value="friend">好友</option>
+            <option value="enemy">宿敌</option>
+            <option value="lover">情人</option>
+            <option value="custom">自定义</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>关系名称</label>
+          <input type="text" id="bond-label" placeholder="可自定义，如：结义兄弟">
+        </div>
+        <div class="form-group">
+          <label>连线颜色</label>
+          <input type="color" id="bond-color" value="#9a7a42">
+        </div>
+        <div class="form-group">
+          <label>备注</label>
+          <textarea id="bond-notes" rows="2"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeBondModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Life Event Modal -->
+  <div class="modal" id="life-event-modal">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="life-event-modal-title">记录往事</h3>
+        <button class="modal-close" onclick="closeLifeEventModal()">&times;</button>
+      </div>
+      <form id="life-event-form" onsubmit="saveLifeEvent(event)">
+        <input type="hidden" id="life-event-id">
+        <input type="hidden" id="life-event-character-id">
+        <div class="form-group">
+          <label>粘贴原文（自动识别时间、人物）</label>
+          <textarea id="life-event-text" rows="5" placeholder="把整段往事粘到这里，系统会自动识别：&#10;· 开头的时间（如：泰盛6年11月、贞观三年、1234年5月）&#10;· 文中出现的人物（与现有角色表匹配）&#10;&#10;识别后仍可手动调整。"></textarea>
+          <div class="form-hint">
+            <button type="button" class="btn btn-sm btn-secondary" onclick="analyzeLifeEventText()">解析内容</button>
+            <span class="text-muted" id="life-event-parse-hint"></span>
+          </div>
+        </div>
+        <div class="life-event-parse-preview" id="life-event-parse-preview">
+          <div class="parse-row">
+            <span class="parse-label">识别时间</span>
+            <span class="parse-value" id="life-event-parse-date">—</span>
+          </div>
+          <div class="parse-row">
+            <span class="parse-label">识别人物</span>
+            <span class="parse-value" id="life-event-parse-characters">—</span>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>时间</label>
+            <input type="text" id="life-event-date" placeholder="如：泰盛6年11月">
+          </div>
+          <div class="form-group">
+            <label>主角色（往事所属）</label>
+            <div class="select-with-add">
+              <input type="text" id="life-event-main-character" list="character-datalist" placeholder="输入主角色名" autocomplete="off">
+              <input type="hidden" id="life-event-main-character-id">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="openAddCharacterForSelect('life-event-main-character','life-event-modal')" title="新建人物">＋</button>
+            </div>
+          </div>
+          <div class="form-group full-width">
+            <label>相关人物</label>
+            <div class="multi-character-picker" id="life-event-related-picker">
+              <div class="multi-character-tags" id="life-event-related-tags"></div>
+              <div class="multi-character-input-row">
+                <input type="text" id="life-event-related-input" list="character-datalist" placeholder="添加相关人物，可输入后回车" autocomplete="off">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addLifeEventRelatedFromInput()">添加</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLifeEventRelatedDropdown()" title="从角色列表选">▼</button>
+              </div>
+              <div class="multi-character-options" id="life-event-related-options"></div>
+            </div>
+          </div>
+          <div class="form-group full-width">
+            <label>分类</label>
+            <div class="memory-category-picker" id="life-event-category-picker">
+              <div class="memory-category-tags" id="life-event-category-tags"></div>
+              <div class="memory-category-input-row">
+                <input type="text" id="life-event-category-input" list="memory-category-datalist" placeholder="选择已有分类，或输入新分类名" autocomplete="off">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addLifeEventCategoryFromInput()">添加/新建</button>
+              </div>
+              <datalist id="memory-category-datalist"></datalist>
+            </div>
+          </div>
+          <div class="form-group full-width">
+            <label>正文</label>
+            <div class="life-event-chips" id="life-event-character-chips">
+              <span class="life-event-chips-empty">识别到主角色和相关人物后，会显示可点击/可拖拽的称谓片段</span>
+            </div>
+            <textarea id="life-event-notes" rows="4" placeholder="完整描述这段往事...  从上方人物片段按钮拖入称谓,即可改写为第三人称。"></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeLifeEventModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Memory Category Manager Modal -->
+  <div class="modal" id="memory-category-modal">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3>记事分类管理</h3>
+        <button class="modal-close" onclick="closeMemoryCategoryManager()">&times;</button>
+      </div>
+      <form id="memory-category-form" onsubmit="saveMemoryCategoryFromForm(event)">
+        <input type="hidden" id="memory-category-edit-id">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>分类名 *</label>
+            <input type="text" id="memory-category-name" required>
+          </div>
+          <div class="form-group">
+            <label>颜色</label>
+            <input type="color" id="memory-category-color" value="#9a7a42">
+          </div>
+          <div class="form-group full-width">
+            <label>说明</label>
+            <textarea id="memory-category-description" rows="2" placeholder="说明这个分类的含义"></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="resetMemoryCategoryForm()">清空</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="memory-category-submit">添加分类</button>
+        </div>
+      </form>
+      <div class="memory-category-list" id="memory-category-list"></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeMemoryCategoryManager()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Character Detail Modal -->
+  <div class="modal" id="character-detail-modal">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="character-detail-title">角色详情</h3>
+        <button class="modal-close" onclick="closeCharacterDetailModal()">&times;</button>
+      </div>
+      <div class="character-detail-content" id="character-detail-content">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeCharacterDetailModal()">关闭</button>
+        <button type="button" class="btn btn-secondary" onclick="openAncestry(currentCharacterId)">三族</button>
+        <button type="button" class="btn btn-primary" onclick="editCharacterFromDetail()">编辑</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Relation Modal -->
+  <div class="modal" id="detail-relation-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="detail-relation-modal-title">添加关系</h3>
+        <button class="modal-close" onclick="closeDetailRelationModal()">&times;</button>
+      </div>
+      <form id="detail-relation-form" onsubmit="saveDetailRelation(event)">
+        <div class="form-group">
+          <label>待选人物 *</label>
+          <div class="select-with-add">
+            <input type="text" id="detail-relation-candidate" list="detail-relation-datalist" placeholder="输入姓名筛选..." autocomplete="off" required>
+            <input type="hidden" id="detail-relation-candidate-id">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="openAddCharacterForSelect('detail-relation-candidate', 'detail-relation-modal')" title="新建人物">＋</button>
+          </div>
+          <datalist id="detail-relation-datalist"></datalist>
+          <div class="detail-relation-hint" id="detail-relation-hint"></div>
+        </div>
+        <div id="detail-relation-options">
+          <div class="form-group">
+            <label>关系类型</label>
+            <select id="detail-relation-type">
+              <option value="biological">亲生</option>
+              <option value="adopted">收养</option>
+              <option value="guoji">过继</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>出身</label>
+            <select id="detail-relation-birth-status">
+              <option value="legitimate">嫡出</option>
+              <option value="concubine_born">庶出</option>
+              <option value="illegitimate">私生</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeDetailRelationModal()">取消</button>
+          <button type="submit" class="btn btn-primary" id="detail-relation-submit">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <!-- Tag Manager Modal -->
+  <div class="modal" id="tag-manager-modal">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="tag-editor-title">标签管理</h3>
+        <button class="modal-close" onclick="closeTagManager()">&times;</button>
+      </div>
+      <form id="tag-editor-form" onsubmit="saveTag(event)">
+        <input type="hidden" id="tag-edit-id">
+        <div class="tag-editor-body">
+          <div class="form-group">
+            <label>标签名 *</label>
+            <input type="text" id="tag-edit-name" placeholder="如：重要配角、伏笔人物" autocomplete="off" required>
+          </div>
+          <div class="form-group">
+            <label>含义/剧情</label>
+            <textarea id="tag-edit-description" rows="2" placeholder="说明这个标签在剧情中的含义"></textarea>
+          </div>
+          <div class="tag-editor-actions">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="resetTagEditForm()">清空</button>
+            <button type="submit" class="btn btn-primary btn-sm" id="tag-editor-submit">添加标签</button>
+          </div>
+        </div>
+      </form>
+      <div class="tag-manager-list" id="tag-manager-list"></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeTagManager()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ancestry Overlay -->
+  <div class="ancestry-overlay" id="ancestry-modal">
+    <div class="ancestry-header">
+      <h3 id="ancestry-title">三族谱系图</h3>
+      <div class="ancestry-controls">
+        <span class="ancestry-hint">点击名字查看人物详情</span>
+        <button class="btn btn-sm btn-primary" onclick="closeAncestry()">关闭</button>
+      </div>
+    </div>
+    <div class="tree-viewport ancestry-viewport" id="ancestry-viewport">
+      <div class="tree-canvas ancestry-canvas" id="ancestry-canvas">
+        <div class="tree-placeholder">
+          <p>正在加载三族谱系图</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <datalist id="character-datalist"></datalist>
+
+  <!-- sql.js（WASM 版 SQLite）从 CDN 加载 -->
+  <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
+  <!-- 数据库层（浏览器用 IndexedDB 持久化） -->
+  <script src="database.js"></script>
+  <!-- API shim：把 app.js 里的 fetch('/api/...') 映射到 db 方法 -->
+  <script src="db-api.js"></script>
+  <script src="ancestry-layout.js?v=20260828-2"></script>
+  <script src="app.js?v=20260828-2"></script>
+</body>
+</html>
+

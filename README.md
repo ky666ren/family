@@ -21,7 +21,7 @@
 
 ## 部署到 GitHub Pages（推荐，零配置）
 
-> 整个 `public/` 目录就是网站。**没有后端**，GitHub Pages 直接托管即可。
+> 整个仓库根目录就是网站（应用文件直接放在根目录）。**没有后端**，GitHub Pages 直接托管即可。
 
 ### 一次性设置
 
@@ -38,7 +38,7 @@
    ```
 3. 在 GitHub 仓库页 → **Settings → Pages**：
    - Source: **Deploy from a branch**
-   - Branch: `main`，Folder: **`/public`**
+   - Branch: `main`，Folder: **`/ (root)`**
    - Save
 4. 等待 1-2 分钟，访问 `https://<your-name>.github.io/<repo>/` 即可看到应用
 
@@ -91,27 +91,28 @@ npm start
 
 ## 项目结构
 
+仓库根目录就是网站（GitHub Pages 与本地开发共用同一套文件）：
+
 ```
 .
-├── public/                      # GitHub Pages 静态托管的目录（也是本地开发的服务根）
-│   ├── index.html
-│   ├── app.js                   # 前端逻辑
-│   ├── database.js              # UMD：浏览器用 IndexedDB、Node.js 用 fs，sql.js 在浏览器从 CDN 加载
-│   ├── db-api.js                # 浏览器端 API shim：把 fetch('/api/...') 调用映射到 db 方法
-│   ├── ancestry-layout.js
-│   └── style.css
-├── database.js                  # 旧 Node.js-only 版本（保留以兼容老引用，server.js 仍能 require）
-├── server.js                    # 本地开发用的简易静态服务器
+├── index.html                   # 入口页面
+├── app.js                       # 前端逻辑
+├── database.js                  # UMD：浏览器用 IndexedDB、Node.js 用 fs，sql.js 在浏览器从 CDN 加载
+├── db-api.js                    # 浏览器端 API shim：把 fetch('/api/...') 调用映射到 db 方法
+├── ancestry-layout.js           # 族谱布局
+├── style.css                    # 样式
+├── server.js                    # 本地开发用的简易静态服务器（直接 serve 根目录）
 ├── config.example.json          # 配置示例（仅本地模式会用）
 ├── package.json
+├── chapters/.gitkeep            # 占位，chapters/ 目录在 .gitignore 中
 └── README.md
 ```
 
 ## 工作原理（简版）
 
-- `public/database.js`（UMD）：把 sql.js（SQLite 编译成 WASM）包装成一个 `FamilyTreeDB` 类，存储层做环境判断：Node.js 用 `fs`、浏览器用 IndexedDB
-- `public/db-api.js`：把 `/api/families` `/api/characters` 之类 30+ 个 REST 路径，全部映射到对应的 `FamilyTreeDB` 方法上，让 `app.js` 不需要修改
-- `public/index.html`：依次加载 sql.js（CDN）→ database.js → db-api.js → app.js，无需 build 步骤
+- `database.js`（UMD）：把 sql.js（SQLite 编译成 WASM）包装成一个 `FamilyTreeDB` 类，存储层做环境判断：Node.js 用 `fs`、浏览器用 IndexedDB
+- `db-api.js`：把 `/api/families` `/api/characters` 之类 30+ 个 REST 路径，全部映射到对应的 `FamilyTreeDB` 方法上，让 `app.js` 不需要修改
+- `index.html`：依次加载 sql.js（CDN）→ database.js → db-api.js → app.js，无需 build 步骤
 
 ## 协作时注意
 
